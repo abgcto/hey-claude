@@ -69,6 +69,16 @@ func checkSherpaLinks() -> Bool {
     }
 }
 
+// Mirrors AudioSamplesTests.test_loads16kMonoFloatSamples.
+func checkAudioLoader() -> Bool {
+    run("audio.loads16kMonoFloatSamples") { c in
+        let samples = try AudioSamples.load(fixture("hey_claude_only"))
+        c.assert(samples.count > 8000, "expected > 8000 samples, got \(samples.count)")
+        c.assert(samples.allSatisfy { $0 >= -1.0 && $0 <= 1.0 },
+                 "samples out of [-1, 1] range")
+    }
+}
+
 // MARK: - Dispatch
 
 func main() -> Int32 {
@@ -82,6 +92,7 @@ func main() -> Int32 {
     }
 
     maybe("sherpa", checkSherpaLinks)
+    maybe("audio", checkAudioLoader)
 
     return allOK ? 0 : 1
 }
