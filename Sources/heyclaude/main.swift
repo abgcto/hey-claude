@@ -76,6 +76,21 @@ do {
     exit(1)
 }
 
+// Preflight: warn (don't block) if `claude` isn't resolvable. Best-effort —
+// the launched terminal uses a login shell whose PATH may differ from ours.
+func resolvesExecutable(_ exe: String) -> Bool {
+    if exe.hasPrefix("/") { return FileManager.default.isExecutableFile(atPath: exe) }
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    p.arguments = ["which", exe]
+    p.standardOutput = Pipe(); p.standardError = Pipe()
+    do { try p.run(); p.waitUntilExit(); return p.terminationStatus == 0 }
+    catch { return false }
+}
+if !resolvesExecutable(settings.claudeExecutable) {
+    print("⚠️  '\(settings.claudeExecutable)' not found on this shell's PATH — a launched terminal may show 'command not found'. If so, set an absolute path in settings.")
+}
+
 print("Hey Claude is listening. Say \"hey claude\" … (Ctrl-C to quit)")
 print("  terminal: \(settings.preferredTerminal.rawValue)   project: \(settings.projectDirectory)")
 RunLoop.main.run()

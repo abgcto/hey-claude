@@ -7,7 +7,6 @@ let package = Package(
     products: [
         .library(name: "HeyClaudeKit", targets: ["HeyClaudeKit"]),
         .executable(name: "heyclaude", targets: ["heyclaude"]),
-        .executable(name: "heyclaude-spike", targets: ["heyclaude-spike"]),
         // On-machine test harness: this CLT-only toolchain has no XCTest runner
         // (`xcrun --find xctest` fails), so the XCTest files in
         // Tests/HeyClaudeKitTests are retained for CI/Xcode while verification
@@ -38,11 +37,6 @@ let package = Package(
             name: "heyclaude",
             dependencies: ["HeyClaudeKit"],
             path: "Sources/heyclaude"
-        ),
-        .executableTarget(
-            name: "heyclaude-spike",
-            dependencies: ["HeyClaudeKit"],
-            path: "Sources/heyclaude-spike"
         ),
         .executableTarget(
             name: "heyclaude-selftest",

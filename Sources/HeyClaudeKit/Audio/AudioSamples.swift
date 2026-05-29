@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 
 public enum AudioSamples {
     public enum Error: Swift.Error { case readFailed }
@@ -22,11 +22,15 @@ public enum AudioSamples {
         let outCapacity = AVAudioFrameCount(Double(inBuffer.frameLength) * ratio) + 1
         let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCapacity)!
 
-        var consumed = false
+        // One-shot feed flag in a reference box: AVAudioConverter calls this
+        // block synchronously, but a captured `var` trips the Sendable-closure
+        // warning, so use a reference (matches AudioCapture).
+        final class Once: @unchecked Sendable { var consumed = false }
+        let once = Once()
         var convError: NSError?
         converter.convert(to: outBuffer, error: &convError) { _, status in
-            if consumed { status.pointee = .noDataNow; return nil }
-            consumed = true; status.pointee = .haveData; return inBuffer
+            if once.consumed { status.pointee = .noDataNow; return nil }
+            once.consumed = true; status.pointee = .haveData; return inBuffer
         }
         if let convError { throw convError }
 
