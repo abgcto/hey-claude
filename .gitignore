@@ -1,7 +1,9 @@
 .DS_Store
 .build/
 *.xcodeproj/xcuserdata/
-Models/
+Models/*
+# …but the hand-authored keywords file is a small tracked text artifact.
+!Models/keywords.txt
 Sources/CSherpaOnnx/sherpa-onnx.xcframework/
 Tests/HeyClaudeKitTests/Fixtures/*.wav
 *.onnx
