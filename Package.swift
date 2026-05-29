@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "HeyClaudeKit", targets: ["HeyClaudeKit"]),
+        .executable(name: "heyclaude", targets: ["heyclaude"]),
         .executable(name: "heyclaude-spike", targets: ["heyclaude-spike"]),
         // On-machine test harness: this CLT-only toolchain has no XCTest runner
         // (`xcrun --find xctest` fails), so the XCTest files in
@@ -32,6 +33,11 @@ let package = Package(
                 .linkedFramework("Accelerate"),
                 .linkedFramework("Foundation"),
             ]
+        ),
+        .executableTarget(
+            name: "heyclaude",
+            dependencies: ["HeyClaudeKit"],
+            path: "Sources/heyclaude"
         ),
         .executableTarget(
             name: "heyclaude-spike",
