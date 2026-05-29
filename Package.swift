@@ -12,6 +12,8 @@ let package = Package(
         // Tests/HeyClaudeKitTests are retained for CI/Xcode while verification
         // here runs through this executable. See internal design notes.
         .executable(name: "heyclaude-selftest", targets: ["heyclaude-selftest"]),
+        // SwiftUI menu-bar app (Phase 3A): the user-facing shell over HeyClaudeKit.
+        .executable(name: "HeyClaudeApp", targets: ["HeyClaudeApp"]),
     ],
     targets: [
         // Prebuilt sherpa-onnx static xcframework (universal2 macOS).
@@ -42,6 +44,11 @@ let package = Package(
             name: "heyclaude-selftest",
             dependencies: ["HeyClaudeKit"],
             path: "Sources/heyclaude-selftest"
+        ),
+        .executableTarget(
+            name: "HeyClaudeApp",
+            dependencies: ["HeyClaudeKit"],
+            path: "Sources/HeyClaudeApp"
         ),
         .testTarget(
             name: "HeyClaudeKitTests",
