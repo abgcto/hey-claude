@@ -189,6 +189,21 @@ func probeDecode() -> Bool {
     return true
 }
 
+// Mirrors ParakeetTranscriberTests.test_transcribesPromptClip.
+func checkTranscribe() -> Bool {
+    run("asr.transcribesPromptClip") { c in
+        let t0 = Date()
+        let t = try ParakeetTranscriber(modelDir: asrDir)
+        FileHandle.standardError.write(
+            "  [diag] ASR engine constructed in \(String(format: "%.2f", -t0.timeIntervalSinceNow))s\n"
+                .data(using: .utf8)!)
+        let text = try t.transcribe(try AudioSamples.load(fixture("hey_claude_prompt")))
+        print("  [asr] transcript: \"\(text)\"")
+        c.assert(text.contains("refactor"), "expected 'refactor', got: \(text)")
+        c.assert(text.contains("auth"), "expected 'auth', got: \(text)")
+    }
+}
+
 // MARK: - Dispatch
 
 func main() -> Int32 {
@@ -209,6 +224,7 @@ func main() -> Int32 {
     maybe("wake-positive", checkWakePositive)
     maybe("wake-probe", probeWake)
     maybe("decode-probe", probeDecode)
+    maybe("asr", checkTranscribe)
 
     return allOK ? 0 : 1
 }
