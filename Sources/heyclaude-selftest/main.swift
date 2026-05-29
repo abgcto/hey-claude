@@ -127,27 +127,17 @@ func checkWakePositiveControl() -> Bool {
 
 // Mirrors WakeWordEngineTests.test_detectsHeyClaudeInPositiveClip.
 //
-// KNOWN CALIBRATION ITEM (per the plan): the 3.3M gigaspeech KWS model does not
-// emit the "claude" token path for the synthetic `say -v Samantha` clip — the
-// decode-probe shows it hears "A CLA" / "CLOG", never "HEY … CLAUDE" — so the
-// keyword cannot fire at any threshold (verified down to 0.02). This is a
-// model/voice acoustic limitation, not a plumbing bug: `wake-control` (the
-// model's own validated keyword on its own wav) fires green. Real-voice tuning
-// is the Phase 2 / manual-spike step. We report this as a non-fatal known item
-// rather than a hard FAIL so the harness exit code reflects true status.
+// Fires on the synthetic `say -v Samantha "hey claude"` clip at the calibrated
+// defaults. The earlier "never fires" symptom was a streaming-flush bug (the
+// tail pad was too short to drain the zipformer's last chunk on a ~0.7s clip),
+// fixed in WakeWordEngine.detects(in:). See internal design notes.
 func checkWakePositive() -> Bool {
-    let engine = try? makeWakeEngine()
-    let samples = try? AudioSamples.load(fixture("hey_claude_only"))
-    let fired = (engine != nil && samples != nil) ? engine!.detects(in: samples!) : false
-    if fired {
-        print("PASS  wake.detectsHeyClaudeInPositiveClip")
-    } else {
-        print("KNOWN-CALIBRATION  wake.detectsHeyClaudeInPositiveClip")
-        print("      - synthetic Samantha clip does not trip 'hey claude' on the 3.3M")
-        print("        gigaspeech model at any threshold; model hears 'A CLA' (see")
-        print("        decode-probe). Documented in internal design notes.")
+    run("wake.detectsHeyClaudeInPositiveClip") { c in
+        let engine = try makeWakeEngine()
+        let samples = try AudioSamples.load(fixture("hey_claude_only"))
+        c.assert(diagDetect(engine, samples, "hey_claude_only"),
+                 "synthetic 'hey claude' clip did not fire the wake word")
     }
-    return true  // non-fatal: this is a documented calibration item
 }
 
 // Diagnostic sweep: prints detection across thresholds + clips. Not a pass/fail
@@ -189,6 +179,47 @@ func probeDecode() -> Bool {
     return true
 }
 
+// DIAG 1 — audio sanity: transcribe the EXACT wake clip used by the wake test.
+func probeTranscribeOnly() -> Bool {
+    print("PROBE asr transcript of hey_claude_only")
+    guard let samples = try? AudioSamples.load(fixture("hey_claude_only")),
+          let t = try? ParakeetTranscriber(modelDir: asrDir) else {
+        print("  ERR could not load model/clip"); return true
+    }
+    let text = (try? t.transcribe(samples)) ?? "<threw>"
+    print("  hey_claude_only: \"\(text)\"")
+    return true
+}
+
+// DIAG 2 — boost sweep. keywords_score keeps the keyword path alive in the
+// beam when acoustic evidence is weak (a different lever than threshold). Sweep
+// it over the positive clip AND negative_speech so we can pick a value with
+// separation (fires on positive, quiet on negative). Threshold pinned low.
+func probeBoostSweep() -> Bool {
+    print("PROBE wake boost sweep (threshold=0.10)")
+    let clips = ["hey_claude_only", "negative_speech"]
+    let loaded = clips.compactMap { name -> (String, [Float])? in
+        guard let s = try? AudioSamples.load(fixture(name)) else { return nil }
+        return (name, s)
+    }
+    print("  boost  | " + loaded.map { $0.0 }.joined(separator: "  "))
+    for boost in [Float(1.0), 2.0, 3.0, 5.0, 8.0] {
+        var line = "  \(String(format: "%.1f", boost))    |"
+        for (_, s) in loaded {
+            // Fresh engine per (boost, clip): the single internal stream is
+            // finished after one detect().
+            guard let e = try? WakeWordEngine(
+                modelDir: kwsDir, keywordsFile: keywordsFile,
+                keywordsThreshold: 0.10, keywordsScore: boost) else {
+                line += " ERR"; continue
+            }
+            line += " \(e.detects(in: s) ? "FIRE" : "----")"
+        }
+        print(line)
+    }
+    return true
+}
+
 // Mirrors ParakeetTranscriberTests.test_transcribesPromptClip.
 func checkTranscribe() -> Bool {
     run("asr.transcribesPromptClip") { c in
@@ -224,6 +255,8 @@ func main() -> Int32 {
     maybe("wake-positive", checkWakePositive)
     maybe("wake-probe", probeWake)
     maybe("decode-probe", probeDecode)
+    maybe("asr-only", probeTranscribeOnly)
+    maybe("boost-sweep", probeBoostSweep)
     maybe("asr", checkTranscribe)
 
     return allOK ? 0 : 1
