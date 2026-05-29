@@ -23,4 +23,18 @@ final class SettingsStoreTests: XCTestCase {
         try store.save(s)
         XCTAssertEqual(store.load(), s)
     }
+
+    func test_defaultSettings_seedChatVsCode() {
+        let s = Settings.default
+        XCTAssertEqual(s.defaultCommandID, "claude-desktop")   // "hey claude" → desktop
+        XCTAssertEqual(s.promptCommandID, "claude-code")        // prompts → code
+        XCTAssertTrue(s.commands.contains { $0.id == "claude-code" })
+    }
+
+    func test_decodingLegacyBlob_missingCommands_fallsBackToSeeded() throws {
+        let legacy = #"{"projectDirectory":"/tmp","preferredTerminal":"iTerm2","wakeKeywordsScore":2,"wakeKeywordsThreshold":0.25,"cooldownSeconds":2,"claudeExecutable":"claude"}"#
+        let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
+        XCTAssertFalse(s.commands.isEmpty)        // seeded, not empty
+        XCTAssertEqual(s.defaultCommandID, "claude-desktop")
+    }
 }
