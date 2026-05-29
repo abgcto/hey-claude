@@ -3,7 +3,7 @@ import Observation
 import HeyClaudeKit
 
 /// Owns the Phase 2 voice pipeline (`AudioCapture → WakeWordEngine →
-/// CaptureSession → VoiceSession → ActionExecutor`) and publishes a single
+/// CaptureSession → VoiceSession → CommandExecutor`) and publishes a single
 /// `AppState` for the menu-bar icon and menu to render.
 ///
 /// Threading: the `AudioCapture` callback runs on `AudioCapture`'s serial
@@ -25,7 +25,7 @@ final class AppController {
     private var transcriber: ParakeetTranscriber?
     private var capture: CaptureSession?
     private var voice: VoiceSession?
-    private var executor: ActionExecutor?
+    private var executor: CommandExecutor?
     private var userMuted = false
     private var didStart = false
 
@@ -43,13 +43,17 @@ final class AppController {
             return
         }
 
-        let launcher: TerminalLauncher
-        switch settings.preferredTerminal {
-        case .terminalApp: launcher = TerminalAppLauncher()
-        case .iterm2:      launcher = ITerm2Launcher()
-        case .ghostty:     launcher = GhosttyLauncher()
-        }
-        let executor = ActionExecutor(settings: settings, launcher: launcher)
+        let registry = CommandRegistry(commands: settings.commands,
+                                       defaultCommandID: settings.defaultCommandID,
+                                       promptCommandID: settings.promptCommandID)
+        let executor = CommandExecutor(settings: settings,
+                                       launcherFor: { kind in
+                                           switch kind {
+                                           case .terminalApp: return TerminalAppLauncher()
+                                           case .iterm2:      return ITerm2Launcher()
+                                           case .ghostty:     return GhosttyLauncher()
+                                           }
+                                       })
         self.executor = executor
 
         do {
@@ -68,15 +72,16 @@ final class AppController {
                 transcribe: { (try? transcriber.transcribe($0)) ?? "" },
                 now: { Date().timeIntervalSinceReferenceDate },
                 cooldownSeconds: settings.cooldownSeconds,
-                execute: { [weak self] action in
+                registry: registry,
+                execute: { [weak self] cmd, prompt in
                     // VoiceSession runs `execute` on the audio queue; perform the
                     // launch there, then report the result to the UI on main.
-                    do { try executor.execute(action) }
+                    do { try executor.execute(cmd, prompt: prompt) }
                     catch {
                         FileHandle.standardError.write(
                             Data("launch failed: \(error)\n".utf8))
                     }
-                    Task { @MainActor in self?.didExecute(action) }
+                    Task { @MainActor in self?.didExecute(cmd) }
                 })
             self.voice = voice
 
@@ -125,15 +130,16 @@ final class AppController {
         state = machine.state
     }
 
-    private func didExecute(_ action: Action) {
+    private func didExecute(_ command: Command) {
         let directory: String? = {
-            switch action {
-            case .launchCLI:      return settings.projectDirectory
-            case .openDesktopApp: return nil
-            case .custom:         return nil
+            switch command.kind {
+            case .runCLI:   return settings.projectDirectory
+            case .openApp:  return nil
+            case .runShell: return nil
             }
         }()
-        recentLog.record(action, directory: directory, at: Date().timeIntervalSinceReferenceDate)
+        recentLog.record(label: command.label, directory: directory,
+                         at: Date().timeIntervalSinceReferenceDate)
         recent = recentLog
         emit(.launching)
         // Settle shortly after launch so the icon returns to armed.

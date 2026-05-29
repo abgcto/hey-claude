@@ -8,7 +8,7 @@ import HeyClaudeKit
 // Pipeline (spec §3–5), wired from tested HeyClaudeKit components:
 //   AudioCapture(frame) ──listening──▶ CaptureSession.feedWhileListening + WakeWordEngine.feed
 //                        ──fire──────▶ CaptureSession.feedWhileCapturing
-//   CaptureSession.onUtterance ──▶ VoiceSession.handle ──▶ transcribe → strip → route → ActionExecutor
+//   CaptureSession.onUtterance ──▶ VoiceSession.handle ──▶ transcribe → strip → resolve → CommandExecutor
 
 let store = SettingsStore()
 let settings = store.load()
@@ -19,14 +19,17 @@ let models = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()   // repo root
     .appendingPathComponent("Models")
 
-let launcher: TerminalLauncher = {
-    switch settings.preferredTerminal {
-    case .terminalApp: return TerminalAppLauncher()
-    case .iterm2: return ITerm2Launcher()
-    case .ghostty: return GhosttyLauncher()
-    }
-}()
-let executor = ActionExecutor(settings: settings, launcher: launcher)
+let registry = CommandRegistry(commands: settings.commands,
+                               defaultCommandID: settings.defaultCommandID,
+                               promptCommandID: settings.promptCommandID)
+let executor = CommandExecutor(settings: settings,
+                               launcherFor: { kind in
+                                   switch kind {
+                                   case .terminalApp: return TerminalAppLauncher()
+                                   case .iterm2: return ITerm2Launcher()
+                                   case .ghostty: return GhosttyLauncher()
+                                   }
+                               })
 
 let wake: WakeWordEngine
 let transcriber: ParakeetTranscriber
@@ -47,9 +50,10 @@ let voice = VoiceSession(
     transcribe: { (try? transcriber.transcribe($0)) ?? "" },
     now: { Date().timeIntervalSinceReferenceDate },
     cooldownSeconds: settings.cooldownSeconds,
-    execute: { action in
-        print("[route] -> \(action) — launching")
-        do { try executor.execute(action) }
+    registry: registry,
+    execute: { cmd, prompt in
+        print("[route] -> \(cmd.label)\(prompt.map { " : \($0)" } ?? "") — launching")
+        do { try executor.execute(cmd, prompt: prompt) }
         catch { FileHandle.standardError.write("launch failed: \(error)\n".data(using: .utf8)!) }
     })
 
