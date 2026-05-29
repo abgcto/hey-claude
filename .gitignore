@@ -1,0 +1,7 @@
+.DS_Store
+.build/
+*.xcodeproj/xcuserdata/
+Models/
+Sources/CSherpaOnnx/sherpa-onnx.xcframework/
+Tests/HeyClaudeKitTests/Fixtures/*.wav
+*.onnx
