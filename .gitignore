@@ -10,3 +10,9 @@ Tests/HeyClaudeKitTests/Fixtures/*.wav
 
 # Landing page lives in its own repo — ignored here.
 site/
+.playwright-mcp/
+
+# Built app bundle (assembled by scripts/bundle-app.sh)
+HeyClaude.app/
+# Playwright MCP scratch cache
+.playwright-mcp/
