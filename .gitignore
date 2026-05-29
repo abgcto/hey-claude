@@ -7,3 +7,6 @@ Models/*
 Sources/CSherpaOnnx/sherpa-onnx.xcframework/
 Tests/HeyClaudeKitTests/Fixtures/*.wav
 *.onnx
+
+# Landing page lives in its own repo — ignored here.
+site/
