@@ -51,7 +51,17 @@ final class OnboardingModel {
 
     // MARK: - Navigation
 
-    func goToMic() { step = .mic }
+    func goToMic() {
+        // Pre-check on arrival so a user who already denied mic access sees the
+        // "Open System Settings" affordance immediately — not a dead "Allow
+        // microphone" they have to click first to discover it does nothing.
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        micDenied = (status == .denied || status == .restricted)
+        if micDenied {
+            statusLine = "Microphone access is needed — enable it in System Settings \u{25B8} Privacy \u{25B8} Microphone."
+        }
+        step = .mic
+    }
 
     func requestMicAndTrain() {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
