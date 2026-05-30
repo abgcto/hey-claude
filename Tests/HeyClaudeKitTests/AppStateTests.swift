@@ -26,6 +26,23 @@ final class AppStateTests: XCTestCase {
         let m = AppStateMachine()
         m.apply(.micDenied);       XCTAssertEqual(m.state, .off)
     }
+    func test_launchFailed_fromHot_goesFailed_thenSettlesArmed() {
+        let m = AppStateMachine()
+        m.apply(.wakeFired);       XCTAssertEqual(m.state, .hot)
+        m.apply(.launchFailed);    XCTAssertEqual(m.state, .failed)
+        m.apply(.settled);         XCTAssertEqual(m.state, .armed)
+    }
+    func test_launchFailed_fromWorking_goesFailed() {
+        let m = AppStateMachine()
+        m.apply(.wakeFired); m.apply(.launching);  XCTAssertEqual(m.state, .working)
+        m.apply(.launchFailed);    XCTAssertEqual(m.state, .failed)
+    }
+    func test_launchFailed_ignoredWhenNotInFlight() {
+        let m = AppStateMachine()
+        m.apply(.launchFailed);    XCTAssertEqual(m.state, .armed)   // nothing in flight
+        m.apply(.muted)
+        m.apply(.launchFailed);    XCTAssertEqual(m.state, .muted)   // never overrides mute
+    }
     func test_lastHeard_capturedOnReveal() {
         let m = AppStateMachine()
         m.apply(.wakeFired)

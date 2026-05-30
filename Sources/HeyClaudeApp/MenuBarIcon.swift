@@ -17,6 +17,7 @@ enum MenuBarIcon {
         // Template for the calm states (system tints them); the accent states
         // draw their own coral and must opt out of template rendering.
         img.isTemplate = (state == .armed || state == .muted || state == .paused || state == .off)
+        // .failed draws its own coral accent → must opt out of template tinting (below).
         img.accessibilityDescription = description(for: state)
         return img
     }
@@ -27,6 +28,7 @@ enum MenuBarIcon {
         case .armed:   return "Hey Claude — listening"
         case .hot:     return "Hey Claude — heard you"
         case .working: return "Hey Claude — launching"
+        case .failed:  return "Hey Claude — launch failed"
         case .muted:   return "Hey Claude — muted"
         case .paused:  return "Hey Claude — paused"
         }
@@ -36,7 +38,7 @@ enum MenuBarIcon {
     private static func drawBars(in rect: NSRect, state: AppState) {
         let color: NSColor
         switch state {
-        case .hot, .working: color = accent
+        case .hot, .working, .failed: color = accent   // .failed: brief attention tint
         case .off:           color = NSColor.labelColor.withAlphaComponent(0.4)
         case .paused:        color = NSColor.labelColor.withAlphaComponent(0.45)
         default:             color = NSColor.labelColor

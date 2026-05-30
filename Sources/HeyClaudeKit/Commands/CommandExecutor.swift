@@ -4,18 +4,25 @@ import Foundation
 /// Executes a resolved Command. Side effects are injected so it's testable
 /// (mock launcher, openApp, runShell, openURL) and the real defaults live in
 /// one place.
+///
+/// `execute` reports its outcome through a `completion` closure rather than a
+/// synchronous `throws`: launch failures arrive on two clocks — terminal/editor
+/// failures are synchronous, but `openApp`'s real error comes back on
+/// `NSWorkspace.openApplication`'s async callback. One `Result` channel captures
+/// both. The typed `LaunchFailure` crosses to the caller intact (it's `Sendable`)
+/// so the UI can show a specific, actionable message — never a bare `Bool`.
 public struct CommandExecutor: Sendable {
     private let settings: Settings
     private let launcherFor: @Sendable (TerminalKind) -> TerminalLauncher
-    private let openApp: @Sendable (String) -> Void
-    private let runShell: @Sendable (String) -> Void
-    private let openURL: @Sendable (URL) -> Void
+    private let openApp: @Sendable (String, @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) -> Void
+    private let runShell: @Sendable (String) throws -> Void
+    private let openURL: @Sendable (URL) -> Bool
 
     public init(settings: Settings,
                 launcherFor: @escaping @Sendable (TerminalKind) -> TerminalLauncher,
-                openApp: @escaping @Sendable (String) -> Void = CommandExecutor.defaultOpenApp,
-                runShell: @escaping @Sendable (String) -> Void = CommandExecutor.defaultRunShell,
-                openURL: @escaping @Sendable (URL) -> Void = CommandExecutor.defaultOpenURL) {
+                openApp: @escaping @Sendable (String, @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) -> Void = CommandExecutor.defaultOpenApp,
+                runShell: @escaping @Sendable (String) throws -> Void = CommandExecutor.defaultRunShell,
+                openURL: @escaping @Sendable (URL) -> Bool = CommandExecutor.defaultOpenURL) {
         self.settings = settings
         self.launcherFor = launcherFor
         self.openApp = openApp
@@ -23,42 +30,54 @@ public struct CommandExecutor: Sendable {
         self.openURL = openURL
     }
 
-    public func execute(_ command: Command, prompt: String?) throws {
+    /// Runs the command and reports success or a typed failure via `completion`.
+    /// Synchronous paths call `completion` inline; the `openApp` path calls it from
+    /// the OS's async launch callback.
+    public func execute(_ command: Command, prompt: String?,
+                        completion: @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) {
         switch command.kind {
         case .runCLI(let template):
             let prompt = command.acceptsPrompt ? prompt : nil
             let target = command.target ?? settings.preferredTarget
             switch target {
             case .terminal(let kind):
-                try launchTerminal(kind: kind, template: template, prompt: prompt)
+                completion(launchTerminal(kind: kind, template: template, prompt: prompt))
             case .editor(let editor):
-                // Editor targets require the tool's integration data. If a command
-                // somehow lacks it, fall back to a terminal rather than fail.
+                // Editor targets require the tool's integration data. Missing data
+                // is a defensive (backfilled) case — fail honestly, no fallback.
                 guard let integration = command.editorIntegration else {
-                    try launchTerminal(kind: fallbackTerminal, template: template, prompt: prompt)
+                    completion(.failure(.editorIntegrationMissing(editor)))
                     return
                 }
-                openURL(DeepLinkBuilder.url(editor: editor, integration: integration, prompt: prompt))
+                let url = DeepLinkBuilder.url(editor: editor, integration: integration, prompt: prompt)
+                completion(openURL(url) ? .success(())
+                                        : .failure(.editorDeepLinkRejected(editor)))
             }
         case .openApp(let bundleID):
-            openApp(bundleID)
+            openApp(bundleID, completion)
         case .runShell(let script):
-            runShell(script)
+            do { try runShell(script); completion(.success(())) }
+            catch { completion(.failure(.shellFailed(error.localizedDescription))) }
         }
     }
 
-    private func launchTerminal(kind: TerminalKind, template: String, prompt: String?) throws {
+    private func launchTerminal(kind: TerminalKind, template: String, prompt: String?)
+        -> Result<Void, LaunchFailure> {
         let rendered = Self.render(template, prompt: prompt)
-        try launcherFor(kind).launch(LaunchSpec(
-            directory: settings.projectDirectory,
-            executable: rendered.executable,
-            prompt: rendered.prompt))
-    }
-
-    /// The terminal app to fall back to when an editor target can't be used.
-    private var fallbackTerminal: TerminalKind {
-        if case .terminal(let kind) = settings.preferredTarget { return kind }
-        return .terminalApp
+        do {
+            try launcherFor(kind).launch(LaunchSpec(
+                directory: settings.projectDirectory,
+                executable: rendered.executable,
+                prompt: rendered.prompt))
+            return .success(())
+        } catch let e as TerminalLaunchError {
+            switch e {
+            case .notInstalled:          return .failure(.terminalNotInstalled(kind))
+            case .automationFailed(let m): return .failure(.terminalAutomationFailed(kind, m))
+            }
+        } catch {
+            return .failure(.terminalAutomationFailed(kind, error.localizedDescription))
+        }
     }
 
     /// Splits a rendered template into (executable, prompt) for LaunchSpec.
@@ -77,20 +96,28 @@ public struct CommandExecutor: Sendable {
         return (exe, nil)
     }
 
-    public static func defaultOpenApp(_ bundleID: String) {
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, _ in }
+    /// Finds the app bundle (sync — nil → `.appNotFound`), then launches it and
+    /// reports the OS's async launch error (→ `.appLaunchFailed`) authoritatively.
+    public static func defaultOpenApp(_ bundleID: String,
+                                      _ completion: @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            completion(.failure(.appNotFound(bundleID)))
+            return
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, err in
+            if let err { completion(.failure(.appLaunchFailed(err.localizedDescription))) }
+            else { completion(.success(())) }
         }
     }
-    public static func defaultRunShell(_ script: String) {
+    public static func defaultRunShell(_ script: String) throws {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
         p.arguments = ["-lc", script]
-        try? p.run()
+        try p.run()
     }
-    /// Opens the editor deep link. Opening a custom-scheme URL activates the
-    /// handling editor, so the Claude Code panel lands in its focused window.
-    public static func defaultOpenURL(_ url: URL) {
+    /// Opens the editor deep link. Returns whether a handler claimed the scheme —
+    /// best-effort (the OS doesn't report whether the editor honored the link).
+    public static func defaultOpenURL(_ url: URL) -> Bool {
         NSWorkspace.shared.open(url)
     }
 }

@@ -84,7 +84,7 @@ public struct EditorIntegration: Codable, Equatable, Sendable {
 
 /// Where a command sends its request: a terminal app, or an editor (via deep
 /// link). Replaces the old per-command `TerminalKind`.
-public enum LaunchTarget: Codable, Equatable, Sendable {
+public enum LaunchTarget: Codable, Hashable, Sendable {
     case terminal(TerminalKind)
     case editor(EditorKind)
 

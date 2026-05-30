@@ -1,11 +1,12 @@
 import Foundation
 
-/// The six perceptual buckets the icon + island + menu all render.
+/// The perceptual buckets the icon + island + menu all render.
 public enum AppState: Equatable, Sendable {
     case off        // not running / mic denied
     case armed      // idle, wake-listening (resting)
     case hot        // wake fired → capturing
     case working    // transcribing + launching
+    case failed     // launch failed (transient → settles back to armed)
     case muted      // user-muted (sticky)
     case paused     // call-guard auto-pause (temporary)
 }
@@ -15,6 +16,7 @@ public enum AppEvent: Equatable, Sendable {
     case wakeFired
     case heard(String)        // transcript revealed (or empty for bare launch)
     case launching
+    case launchFailed         // the launch attempt errored
     case settled              // action done → back to resting
     case muted, unmuted
     case callPaused, callResumed
@@ -44,8 +46,10 @@ public final class AppStateMachine {
             if state == .hot { lastHeard = text.isEmpty ? nil : text }
         case .launching:
             if state == .hot { state = .working }
+        case .launchFailed:
+            if state == .hot || state == .working { state = .failed }   // ignored while muted/paused/off
         case .settled:
-            if state == .working || state == .hot { state = .armed }
+            if state == .working || state == .hot || state == .failed { state = .armed }
         }
     }
 }

@@ -39,7 +39,7 @@ struct IslandView: View {
     /// the notch. Both share one size so hearing → launching never resizes.
     private var isReveal: Bool {
         switch model.visual {
-        case .transcript, .launching: return true
+        case .transcript, .launching, .failed: return true
         default: return false
         }
     }
@@ -131,7 +131,7 @@ struct IslandView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .id(isLaunching)
+            .id(revealPhase)
             .transition(.opacity)
     }
 
@@ -145,6 +145,19 @@ struct IslandView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(coral)
                     .lineLimit(1)
+            }
+        } else if isFailed {
+            // Failure: a coral ✕ + the short reason. Distinct from launching's →,
+            // on the locked palette (no new red). Detail lives in the menu.
+            HStack(spacing: 5) {
+                Text("✕")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(coral)
+                Text(revealText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(coral)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         } else {
             // Hearing: the spoken sentence — wraps to 2 lines max, then ellipsis.
@@ -162,9 +175,18 @@ struct IslandView: View {
         return false
     }
 
+    private var isFailed: Bool {
+        if case .failed = model.visual { return true }
+        return false
+    }
+
+    /// Identity for the reveal line so a phase change cross-fades: hearing (0) →
+    /// launching (1) or failed (2).
+    private var revealPhase: Int { isLaunching ? 1 : (isFailed ? 2 : 0) }
+
     private var revealText: String {
         switch model.visual {
-        case .transcript(let t), .launching(let t): return t
+        case .transcript(let t), .launching(let t), .failed(let t): return t
         default: return ""
         }
     }
@@ -204,9 +226,9 @@ struct IslandView: View {
 
     @ViewBuilder private var rightContent: some View {
         switch model.visual {
-        case .hidden, .idle, .transcript, .launching, .empty:
-            // hidden/armed show nothing on the right; transcript & launching put
-            // their content BELOW the notch (see `revealLayout`), not here. The
+        case .hidden, .idle, .transcript, .launching, .failed, .empty:
+            // hidden/armed show nothing on the right; transcript, launching & failed
+            // put their content BELOW the notch (see `revealLine`), not here. The
             // mascot's presence alone signals "armed, listening for the wake word."
             EmptyView()
 

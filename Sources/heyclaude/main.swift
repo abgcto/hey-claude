@@ -53,8 +53,11 @@ let voice = VoiceSession(
     registry: registry,
     execute: { cmd, prompt in
         print("[route] -> \(cmd.label)\(prompt.map { " : \($0)" } ?? "") — launching")
-        do { try executor.execute(cmd, prompt: prompt) }
-        catch { FileHandle.standardError.write("launch failed: \(error)\n".data(using: .utf8)!) }
+        executor.execute(cmd, prompt: prompt) { result in
+            if case .failure(let f) = result {
+                FileHandle.standardError.write("launch failed: \(f.localizedDescription)\n".data(using: .utf8)!)
+            }
+        }
     },
     // Diagnostic: show exactly what the model heard and how it stripped/resolved,
     // BEFORE the launch — this is what reveals a bare "hey claude" picking up a

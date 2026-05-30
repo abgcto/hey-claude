@@ -377,6 +377,7 @@ func probeRoute() -> Bool {
 // MARK: - Editor target routing (mirrors EditorRoutingTests + CommandExecutorTests)
 
 final class URLBox: @unchecked Sendable { var url: URL? }
+final class ResultBox: @unchecked Sendable { var result: Result<Void, LaunchFailure>? }
 
 final class ProbeMockLauncher: TerminalLauncher, @unchecked Sendable {
     var launched: [LaunchSpec] = []
@@ -419,12 +420,12 @@ func probeEditorRoute() -> Bool {
         let box = URLBox()
         let exec = CommandExecutor(settings: .default,
                                    launcherFor: { _ in ProbeMockLauncher() },
-                                   openURL: { box.url = $0 })
+                                   openURL: { box.url = $0; return true })
         let cmd = Command(id: "claude-code", label: "Claude Code", triggers: ["code"],
                           kind: .runCLI(commandTemplate: "claude {prompt}"),
                           target: .editor(.cursor), acceptsPrompt: true,
                           editorIntegration: .claudeCode)
-        try exec.execute(cmd, prompt: "fix the bug")
+        exec.execute(cmd, prompt: "fix the bug") { _ in }
         c.assertEqual(box.url?.absoluteString ?? "nil",
                       "cursor://anthropic.claude-code/open?prompt=fix%20the%20bug")
     } && ok
@@ -453,12 +454,17 @@ func probeEditorOpenLive(_ editor: EditorKind) -> Bool {
                       editorIntegration: .claudeCode)
     let prompt = "BACKEND TEST — opened via CommandExecutor, do not press enter"
     print("  url = \(DeepLinkBuilder.url(editor: editor, integration: .claudeCode, prompt: prompt).absoluteString)")
-    do {
-        try exec.execute(cmd, prompt: prompt)
+    let outcome = ResultBox()
+    exec.execute(cmd, prompt: prompt) { outcome.result = $0 }
+    switch outcome.result {
+    case .success:
         print("OPENED  \(editor.rawValue) — check the editor for a Claude Code panel")
         return true
-    } catch {
-        print("FAIL    \(error)")
+    case .failure(let f):
+        print("FAIL    \(f.localizedDescription)")
+        return false
+    case .none:
+        print("FAIL    no result (async openApp not awaited)")
         return false
     }
 }

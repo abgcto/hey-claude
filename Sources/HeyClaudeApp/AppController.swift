@@ -38,6 +38,11 @@ final class AppController {
     private(set) var state: AppState = .armed
     private(set) var recent = RecentActions()
     private(set) var settings: Settings
+    /// The most recent launch failure, held until the next successful launch.
+    /// Drives the persistent "Last launch failed" row in the menu and the island's
+    /// failure beat. Lives outside `AppState` (which is a pure render bucket), the
+    /// same way `lastHeard` does.
+    private(set) var lastFailure: LaunchFailure?
 
     /// Set by the app layer (HeyClaudeApp) to present the onboarding window when
     /// first-run setup hasn't happened. `start()` calls this instead of booting
@@ -193,15 +198,18 @@ final class AppController {
                 registry: registry,
                 execute: { [weak self] cmd, prompt in
                     // VoiceSession runs `execute` on the audio queue; perform the
-                    // launch there, then report the result to the UI on main.
-                    do { try executor.execute(cmd, prompt: prompt) }
-                    catch {
-                        FileHandle.standardError.write(
-                            Data("launch failed: \(error)\n".utf8))
+                    // launch there, then report the typed outcome to the UI on main.
+                    // `completion` fires inline for terminal/editor, async for openApp.
+                    executor.execute(cmd, prompt: prompt) { result in
+                        if case .failure(let failure) = result {
+                            Log.launch.error("launch failed: \(failure.localizedDescription, privacy: .public)")
+                        }
+                        // `prompt` is the user's words post wake-strip — the text
+                        // the island hands back during the reveal beat.
+                        Task { @MainActor in
+                            self?.didFinish(cmd, transcript: prompt, result: result)
+                        }
                     }
-                    // `prompt` is the user's words post wake-strip — the text
-                    // the island hands back during the reveal beat.
-                    Task { @MainActor in self?.didExecute(cmd, transcript: prompt) }
                 },
                 // Observability seam: log what each fire heard + how it routed.
                 // Runs on the audio queue; `logRoute` is queue-safe (no self).
@@ -326,11 +334,16 @@ final class AppController {
         guard let island else { return }
         let model = IslandModel(state: machine.state,
                                 transcript: machine.lastHeard,
-                                revealing: revealing)
+                                revealing: revealing,
+                                failureMessage: machine.state == .failed ? lastFailure?.islandMessage : nil)
         island.update(model)
     }
 
-    private func didExecute(_ command: Command, transcript: String?) {
+    /// Hand-back beat after a launch attempt. The real launch already ran on the
+    /// audio queue; this is the cosmetic reveal, now with a truthful branch: a
+    /// success settles through "Launching Claude", a failure surfaces the error.
+    private func didFinish(_ command: Command, transcript: String?,
+                           result: Result<Void, LaunchFailure>) {
         let directory: String? = {
             switch command.kind {
             case .runCLI:
@@ -342,14 +355,22 @@ final class AppController {
             case .runShell: return nil
             }
         }()
+
+        let succeeded: Bool
+        switch result {
+        case .success:           succeeded = true;  lastFailure = nil
+        case .failure(let f):    succeeded = false; lastFailure = f
+        }
+
+        // Recent is an honest outcome log — record both, marked.
         recentLog.record(label: command.label, directory: directory,
-                         at: Date().timeIntervalSinceReferenceDate)
+                         at: Date().timeIntervalSinceReferenceDate,
+                         outcome: succeeded ? .launched : .failed)
         recent = recentLog
 
-        // Reveal sequence: hold the transcript on the island for ~1.2s (state
-        // stays `.hot`), then launch (`.hot → .working`, "Launching Claude"),
-        // then settle back to the resting seam. The real launch already happened
-        // on the audio queue; this is the cosmetic hand-back beat.
+        // Reveal sequence: hold the transcript on the island for ~1.2s (state stays
+        // `.hot`), then either launch (`→ .working`) or fail (`→ .failed`), then
+        // settle back to the resting seam.
         let hasTranscript = !(transcript ?? "").isEmpty
         machine.apply(.heard(transcript ?? ""))   // records lastHeard while `.hot`
         revealing = hasTranscript
@@ -360,8 +381,13 @@ final class AppController {
                 try? await Task.sleep(for: .milliseconds(1200))
             }
             self.revealing = false
-            self.emit(.launching)
-            try? await Task.sleep(for: .milliseconds(900))
+            if succeeded {
+                self.emit(.launching)
+                try? await Task.sleep(for: .milliseconds(900))
+            } else {
+                self.emit(.launchFailed)
+                try? await Task.sleep(for: .milliseconds(1500))   // hold the error a beat longer
+            }
             self.emit(.settled)
         }
     }

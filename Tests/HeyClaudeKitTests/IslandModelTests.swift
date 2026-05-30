@@ -70,4 +70,13 @@ final class IslandModelTests: XCTestCase {
     func test_pausedIsPausedVisual() {
         XCTAssertEqual(IslandModel(state: .paused, transcript: nil).visual, .paused)
     }
+    func test_failedShowsFailureMessageInRevealBand() {
+        let m = IslandModel(state: .failed, transcript: nil,
+                            failureMessage: "Cursor isn’t installed")
+        XCTAssertEqual(m.shape, .expanded)
+        XCTAssertEqual(m.visual, .failed("Cursor isn’t installed"))
+    }
+    func test_failedWithoutMessageHasFallbackVisual() {
+        XCTAssertEqual(IslandModel(state: .failed, transcript: nil).visual, .failed("Couldn’t launch"))
+    }
 }

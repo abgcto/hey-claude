@@ -15,6 +15,7 @@ public struct IslandModel: Equatable {
         case listening              // hot — pulsing live dot + coral equalizer
         case transcript(String)     // hot + revealing + text — taller band, "● HEARING" + line
         case launching(String)      // working — taller band, "→ LAUNCHING" + the line (may be "")
+        case failed(String)         // failed — taller band, "✕" + the failure message
         case muted                  // mic off — slashed-mic glyph, dimmed
         case paused                 // call-guard hold — violet pause glyph + label, dimmed
         case empty                  // onboarding placeholder — black band at resting width, no content
@@ -36,11 +37,18 @@ public struct IslandModel: Equatable {
         showsSlash = false; dimmed = false; hidden = false
     }
 
-    public init(state: AppState, transcript: String?, revealing: Bool = false) {
+    public init(state: AppState, transcript: String?, revealing: Bool = false,
+                failureMessage: String? = nil) {
         switch state {
         case .off:
             shape = .seam; content = .none; visual = .hidden
             showsSlash = false; dimmed = false; hidden = true
+        case .failed:
+            // Reuses the reveal band (same width as hearing/launching, no resize):
+            // a single "✕ <message>" line below the notch.
+            shape = .expanded; content = .none
+            visual = .failed(failureMessage ?? "Couldn’t launch")
+            showsSlash = false; dimmed = false; hidden = false
         case .armed:
             shape = .seam; content = .none; visual = .idle
             showsSlash = false; dimmed = false; hidden = false
