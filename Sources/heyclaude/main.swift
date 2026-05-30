@@ -55,6 +55,13 @@ let voice = VoiceSession(
         print("[route] -> \(cmd.label)\(prompt.map { " : \($0)" } ?? "") — launching")
         do { try executor.execute(cmd, prompt: prompt) }
         catch { FileHandle.standardError.write("launch failed: \(error)\n".data(using: .utf8)!) }
+    },
+    // Diagnostic: show exactly what the model heard and how it stripped/resolved,
+    // BEFORE the launch — this is what reveals a bare "hey claude" picking up a
+    // stray trailing token and escaping to the Claude Code fallthrough.
+    observe: { o in
+        let stripped = o.strippedCommand.map { "\"\($0)\"" } ?? "nil (bare wake)"
+        print("[heard] raw=\"\(o.transcript)\"  stripped=\(stripped)")
     })
 
 let capture = CaptureSession(onUtterance: { voice.handle(utterance: $0) })

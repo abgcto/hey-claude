@@ -179,6 +179,43 @@ func probeDecode() -> Bool {
     return true
 }
 
+// Live calibration: record YOUR real "hey claude" and show the tokens the KWS
+// model emits for it + whether the current keyword fires. The synthetic fixtures
+// may tokenize differently than a real voice; this is the data we build the
+// keyword from. Run: `swift run heyclaude-selftest mic-decode`.
+func probeMicDecode() -> Bool {
+    final class Buf: @unchecked Sendable {
+        private var s: [Float] = []
+        private let lock = NSLock()
+        func append(_ f: [Float]) { lock.lock(); s.append(contentsOf: f); lock.unlock() }
+        func snapshot() -> [Float] { lock.lock(); defer { lock.unlock() }; return s }
+    }
+
+    let rounds = 5, windowSec = 2.5
+    print("PROBE mic-decode — say \"hey claude\" once per round (\(rounds) rounds).")
+    let wake = try? WakeWordEngine(modelDir: kwsDir, keywordsFile: keywordsFile,
+                                   keywordsThreshold: 0.25, keywordsScore: 2.0)
+    for round in 1...rounds {
+        let buf = Buf()
+        guard let mic = try? AudioCapture(onFrame: { buf.append($0) }) else {
+            print("  mic init failed"); return true
+        }
+        print("  Round \(round)/\(rounds): say \"hey claude\" NOW…")
+        do { try mic.start() } catch { print("  mic start failed: \(error)"); return true }
+        Thread.sleep(forTimeInterval: windowSec)
+        mic.stop()
+
+        let samples = buf.snapshot()
+        let r = KwsDebug.decodeTokens(modelDir: kwsDir, samples: samples)
+        let fired = wake?.detects(in: samples) ?? false
+        print("        text=\"\(r.text)\"")
+        print("        tokens=\(r.tokens)")
+        print("        current keyword fires? \(fired ? "✅ YES" : "❌ NO")")
+    }
+    print("\n  Keyword file currently: \(((try? String(contentsOf: keywordsFile, encoding: .utf8)) ?? "?").trimmingCharacters(in: .whitespacesAndNewlines))")
+    return true
+}
+
 // DIAG 1 — audio sanity: transcribe the EXACT wake clip used by the wake test.
 func probeTranscribeOnly() -> Bool {
     print("PROBE asr transcript of hey_claude_only")
@@ -235,6 +272,56 @@ func checkTranscribe() -> Bool {
     }
 }
 
+// Diagnostic (not a test): reproduces the app's exact routing for each
+// "hey claude" fixture — transcribe -> WakePrefixStripper -> CommandRegistry —
+// to reveal which command a bare/coded/prompt utterance actually resolves to.
+// Mirrors VoiceSession.handle. Run: `swift run heyclaude-selftest route`.
+func probeRoute() -> Bool {
+    run("route.resolvesFixturesToCommands") { _ in
+        let asr = try ParakeetTranscriber(modelDir: asrDir)
+        let s = Settings.default
+        let registry = CommandRegistry(commands: s.commands,
+                                       defaultCommandID: s.defaultCommandID,
+                                       promptCommandID: s.promptCommandID)
+
+        func kindLabel(_ k: CommandKind) -> String {
+            switch k {
+            case .runCLI(let t):   return "runCLI(\(t))"
+            case .openApp(let b):  return "openApp(\(b))"
+            case .runShell(let s): return "runShell(\(s))"
+            }
+        }
+
+        func report(_ tag: String, _ raw: String) {
+            let stripped = WakePrefixStripper.command(from: raw)
+            let res = registry.resolve(transcript: stripped)
+            print("  [route] \(tag)")
+            print("          raw       = \"\(raw)\"")
+            print("          stripped  = \(stripped.map { "\"\($0)\"" } ?? "nil (bare wake)")")
+            if let res = res {
+                print("          resolved  = \(res.command.label)  [\(kindLabel(res.command.kind))]  prompt=\(res.prompt.map { "\"\($0)\"" } ?? "nil")")
+            } else {
+                print("          resolved  = nil (no command)")
+            }
+        }
+
+        for name in ["hey_claude_only", "hey_claude_code", "hey_claude_prompt"] {
+            report(name, try asr.transcribe(try AudioSamples.load(fixture(name))))
+        }
+
+        // Simulate the LIVE capture clip: 2.0s preroll silence + utterance +
+        // trailing silence to the 2.5s post-fire cap. Tests whether Parakeet
+        // hallucinates/repeats on the silence padding the live path adds.
+        let only = try AudioSamples.load(fixture("hey_claude_only"))
+        let lead = [Float](repeating: 0, count: 32000)   // 2.0s @ 16kHz preroll
+        for tailS in [0.6, 1.5, 2.5] {
+            let tail = [Float](repeating: 0, count: Int(16000 * tailS))
+            let padded = lead + only + tail
+            report("padded(lead2.0s+tail\(tailS)s)", try asr.transcribe(padded))
+        }
+    }
+}
+
 // MARK: - Dispatch
 
 func main() -> Int32 {
@@ -255,9 +342,11 @@ func main() -> Int32 {
     maybe("wake-positive", checkWakePositive)
     maybe("wake-probe", probeWake)
     maybe("decode-probe", probeDecode)
+    maybe("mic-decode", probeMicDecode)
     maybe("asr-only", probeTranscribeOnly)
     maybe("boost-sweep", probeBoostSweep)
     maybe("asr", checkTranscribe)
+    maybe("route", probeRoute)
 
     return allOK ? 0 : 1
 }

@@ -24,7 +24,12 @@ public final class CaptureSession {
 
     public init(sampleRate: Double = 16000,
                 prerollSeconds: Double = 2.0,
-                postFireMaxSeconds: Double = 2.5,
+                // Generous safety cap, NOT the normal terminator: the VAD's
+                // silence endpoint ends a normal utterance whenever the speaker
+                // pauses. This only bounds the clip if the (energy-based) VAD
+                // never sees silence — e.g. a noisy room — so it can't capture
+                // forever. Speak as long as you like; it ends when you stop.
+                postFireMaxSeconds: Double = 30.0,
                 vad: VoiceActivityDetector = VoiceActivityDetector(),
                 onUtterance: @escaping ([Float]) -> Void) {
         self.sampleRate = sampleRate

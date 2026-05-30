@@ -3,16 +3,16 @@ import Foundation
 
 /// Executes a resolved Command. Side effects are injected so it's testable
 /// (mock launcher, openApp, runShell) and the real defaults live in one place.
-public struct CommandExecutor {
+public struct CommandExecutor: Sendable {
     private let settings: Settings
-    private let launcherFor: (TerminalKind) -> TerminalLauncher
-    private let openApp: (String) -> Void
-    private let runShell: (String) -> Void
+    private let launcherFor: @Sendable (TerminalKind) -> TerminalLauncher
+    private let openApp: @Sendable (String) -> Void
+    private let runShell: @Sendable (String) -> Void
 
     public init(settings: Settings,
-                launcherFor: @escaping (TerminalKind) -> TerminalLauncher,
-                openApp: @escaping (String) -> Void = CommandExecutor.defaultOpenApp,
-                runShell: @escaping (String) -> Void = CommandExecutor.defaultRunShell) {
+                launcherFor: @escaping @Sendable (TerminalKind) -> TerminalLauncher,
+                openApp: @escaping @Sendable (String) -> Void = CommandExecutor.defaultOpenApp,
+                runShell: @escaping @Sendable (String) -> Void = CommandExecutor.defaultRunShell) {
         self.settings = settings
         self.launcherFor = launcherFor
         self.openApp = openApp

@@ -2,7 +2,13 @@ import Foundation
 import CSherpaOnnx
 
 /// Offline transcription via sherpa-onnx + NeMo Parakeet TDT.
-public final class ParakeetTranscriber: SpeechTranscriber {
+///
+/// `@unchecked Sendable`: the underlying sherpa recognizer is not thread-safe,
+/// but it is only ever driven from the single AudioCapture serial queue (via the
+/// `VoiceSession.transcribe` callback). The annotation lets that callback be
+/// `@Sendable` — required so it does not inherit main-actor isolation and trap
+/// on macOS 26 when invoked off-main.
+public final class ParakeetTranscriber: SpeechTranscriber, @unchecked Sendable {
     public enum Error: Swift.Error { case missingModelFile(String) }
 
     private let recognizer: SherpaOnnxOfflineRecognizer

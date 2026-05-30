@@ -2,6 +2,26 @@ import Foundation
 import Observation
 import HeyClaudeKit
 
+/// Appends one line per fired wake to `/tmp/heyclaude-route.log` (and stderr) so
+/// the live transcript → routing decision is visible for diagnosis — the one
+/// thing synthetic fixtures and unit tests cannot reproduce. Off by default;
+/// opt in with `HEYCLAUDE_ROUTE_LOG=1` so production stays quiet. Free function
+/// (not on the @MainActor class) so it is safe to call from the audio queue.
+private func logRoute(_ o: VoiceSession.Outcome) {
+    guard ProcessInfo.processInfo.environment["HEYCLAUDE_ROUTE_LOG"] != nil else { return }
+    let stripped = o.strippedCommand.map { "\"\($0)\"" } ?? "nil"
+    let routed = o.resolved.map { "\($0.command.label) [\($0.command.id)] prompt=\($0.prompt.map { "\"\($0)\"" } ?? "nil")" }
+        ?? "nil (no command)"
+    let line = "raw=\"\(o.transcript)\"  stripped=\(stripped)  ->  \(routed)\n"
+    FileHandle.standardError.write(Data(line.utf8))
+    let url = URL(fileURLWithPath: "/tmp/heyclaude-route.log")
+    if let h = try? FileHandle(forWritingTo: url) {
+        h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+    } else {
+        try? Data(line.utf8).write(to: url)
+    }
+}
+
 /// Owns the Phase 2 voice pipeline (`AudioCapture → WakeWordEngine →
 /// CaptureSession → VoiceSession → CommandExecutor`) and publishes a single
 /// `AppState` for the menu-bar icon and menu to render.
@@ -98,14 +118,20 @@ final class AppController {
                     // `prompt` is the user's words post wake-strip — the text
                     // the island hands back during the reveal beat.
                     Task { @MainActor in self?.didExecute(cmd, transcript: prompt) }
-                })
+                },
+                // Observability seam: log what each fire heard + how it routed.
+                // Runs on the audio queue; `logRoute` is queue-safe (no self).
+                observe: { logRoute($0) })
             self.voice = voice
 
-            let capture = CaptureSession(onUtterance: { clip in
-                // Runs on the audio queue. Route + execute via VoiceSession (which
-                // also transcribes). CaptureSession stays on this queue.
-                voice.handle(utterance: clip)
-            })
+            let capture = CaptureSession(
+                postFireMaxSeconds: settings.maxUtteranceSeconds,
+                vad: VoiceActivityDetector(hangoverMs: settings.endpointSilenceMs),
+                onUtterance: { clip in
+                    // Runs on the audio queue. Route + execute via VoiceSession (which
+                    // also transcribes). CaptureSession stays on this queue.
+                    voice.handle(utterance: clip)
+                })
             self.capture = capture
 
             // The closure captures the pipeline components as locals (never the

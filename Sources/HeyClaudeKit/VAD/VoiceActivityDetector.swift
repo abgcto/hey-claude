@@ -6,7 +6,7 @@ public struct VoiceActivityDetector {
     public let frameMs: Int
     public let hangoverMs: Int
 
-    public init(energyThreshold: Float = 0.01, frameMs: Int = 20, hangoverMs: Int = 600) {
+    public init(energyThreshold: Float = 0.01, frameMs: Int = 20, hangoverMs: Int = 800) {
         self.energyThreshold = energyThreshold
         self.frameMs = frameMs
         self.hangoverMs = hangoverMs

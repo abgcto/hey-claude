@@ -14,6 +14,12 @@ public struct Settings: Codable, Equatable, Sendable {
     public var wakeKeywordsScore: Float
     public var wakeKeywordsThreshold: Float
     public var cooldownSeconds: Double            // ignore re-fires within this window
+    public var maxUtteranceSeconds: Double        // safety cap on one utterance; the
+                                                  // silence endpoint is the real
+                                                  // terminator — this only bounds a clip
+                                                  // when the VAD never detects silence
+    public var endpointSilenceMs: Int             // trailing silence that marks end-of-
+                                                  // speech (you stopped talking)
     public var claudeExecutable: String           // "claude" or absolute path
     public var commands: [Command]                // the voice-triggerable command registry
     public var defaultCommandID: String           // bare "hey claude"
@@ -25,6 +31,8 @@ public struct Settings: Codable, Equatable, Sendable {
                 wakeKeywordsScore: Float = 2.0,
                 wakeKeywordsThreshold: Float = 0.25,
                 cooldownSeconds: Double = 2.0,
+                maxUtteranceSeconds: Double = 30.0,
+                endpointSilenceMs: Int = 800,
                 claudeExecutable: String = "claude",
                 commands: [Command] = Command.seededDefaults,
                 defaultCommandID: String = "claude-desktop",
@@ -35,6 +43,8 @@ public struct Settings: Codable, Equatable, Sendable {
         self.wakeKeywordsScore = wakeKeywordsScore
         self.wakeKeywordsThreshold = wakeKeywordsThreshold
         self.cooldownSeconds = cooldownSeconds
+        self.maxUtteranceSeconds = maxUtteranceSeconds
+        self.endpointSilenceMs = endpointSilenceMs
         self.claudeExecutable = claudeExecutable
         self.commands = commands
         self.defaultCommandID = defaultCommandID
@@ -52,6 +62,10 @@ public struct Settings: Codable, Equatable, Sendable {
         self.wakeKeywordsScore = try container.decode(Float.self, forKey: .wakeKeywordsScore)
         self.wakeKeywordsThreshold = try container.decode(Float.self, forKey: .wakeKeywordsThreshold)
         self.cooldownSeconds = try container.decode(Double.self, forKey: .cooldownSeconds)
+        self.maxUtteranceSeconds = try container.decodeIfPresent(Double.self, forKey: .maxUtteranceSeconds)
+            ?? 30.0
+        self.endpointSilenceMs = try container.decodeIfPresent(Int.self, forKey: .endpointSilenceMs)
+            ?? 800
         self.claudeExecutable = try container.decode(String.self, forKey: .claudeExecutable)
         self.commands = try container.decodeIfPresent([Command].self, forKey: .commands)
             ?? Command.seededDefaults

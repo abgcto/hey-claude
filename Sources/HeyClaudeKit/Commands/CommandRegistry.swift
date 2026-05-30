@@ -16,7 +16,7 @@ public struct CommandRegistry {
         self.promptCommandID = promptCommandID
     }
 
-    public struct Resolution: Equatable { public let command: Command; public let prompt: String? }
+    public struct Resolution: Equatable, Sendable { public let command: Command; public let prompt: String? }
 
     private func command(_ id: String) -> Command? { commands.first { $0.id == id } }
     private static func norm(_ s: String) -> String {

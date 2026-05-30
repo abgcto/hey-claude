@@ -8,8 +8,8 @@ final class CommandExecutorTests: XCTestCase {
         func launch(_ spec: LaunchSpec) throws { launched.append(spec) }
     }
 
-    private func exec(_ mock: MockLauncher, openedApps: @escaping (String) -> Void = { _ in },
-                      ranShell: @escaping (String) -> Void = { _ in }) -> CommandExecutor {
+    private func exec(_ mock: MockLauncher, openedApps: @escaping @Sendable (String) -> Void = { _ in },
+                      ranShell: @escaping @Sendable (String) -> Void = { _ in }) -> CommandExecutor {
         CommandExecutor(settings: .default, launcherFor: { _ in mock },
                         openApp: openedApps, runShell: ranShell)
     }
@@ -30,15 +30,15 @@ final class CommandExecutorTests: XCTestCase {
         XCTAssertTrue(sh.contains("claude") && !sh.contains("{prompt}") && !sh.contains("''"))
     }
     func test_openApp_callsOpenWithBundleID() throws {
-        var opened: String?
-        try exec(MockLauncher(), openedApps: { opened = $0 })
+        let opened = Box<String?>(nil)
+        try exec(MockLauncher(), openedApps: { opened.value = $0 })
             .execute(Command(id: "a", label: "App", triggers: [], kind: .openApp(bundleID: "com.x.y")), prompt: nil)
-        XCTAssertEqual(opened, "com.x.y")
+        XCTAssertEqual(opened.value, "com.x.y")
     }
     func test_runShell_callsRunWithScript() throws {
-        var ran: String?
-        try exec(MockLauncher(), ranShell: { ran = $0 })
+        let ran = Box<String?>(nil)
+        try exec(MockLauncher(), ranShell: { ran.value = $0 })
             .execute(Command(id: "s", label: "Sh", triggers: ["t"], kind: .runShell(script: "npm test")), prompt: nil)
-        XCTAssertEqual(ran, "npm test")
+        XCTAssertEqual(ran.value, "npm test")
     }
 }
