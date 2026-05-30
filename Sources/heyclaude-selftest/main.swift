@@ -216,6 +216,58 @@ func probeMicDecode() -> Bool {
     return true
 }
 
+// Full wake enrollment over 3 live utterances — the real algorithm end to end,
+// dry-run (does NOT overwrite your per-user keyword). Run: `… enroll`.
+func probeEnroll() -> Bool {
+    let kws = kwsDir   // capture locally so the @Sendable closures don't touch globals
+    print("PROBE enroll — 3 live utterances (2 isolated + 1 natural).")
+
+    func recordOne(_ label: String) -> [Float] {
+        print("  \(label)")
+        final class Clip: @unchecked Sendable { var s: [Float] = [] }
+        let clip = Clip()
+        let sem = DispatchSemaphore(value: 0)
+        let rec = EnrollmentRecorder(endpointSilenceMs: 800, maxSeconds: 8)
+        do { try rec.record(onClip: { c in clip.s = c; sem.signal() }) }
+        catch { print("    mic failed: \(error)"); return [] }
+        sem.wait()
+        print("    captured \(clip.s.count) samples (~\(String(format: "%.1f", Double(clip.s.count) / 16000))s)")
+        return clip.s
+    }
+
+    let samples: [WakeEnrollment.Sample] = [
+        .init(audio: recordOne("Isolated 1 — say \"Hey Claude\" NOW…"), kind: .isolated),
+        .init(audio: recordOne("Isolated 2 — say \"Hey Claude\" NOW…"), kind: .isolated),
+        .init(audio: recordOne("Natural — say \"Hey Claude\" and ask for something…"), kind: .natural),
+    ]
+
+    let enroll = WakeEnrollment(
+        decode: { s in KwsDebug.decodeTokens(modelDir: kws, samples: s).tokens },
+        fires: { lines, threshold, audio in
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("hc-enroll-kw.txt")
+            try? (lines.joined(separator: "\n") + "\n").write(to: tmp, atomically: true, encoding: .utf8)
+            guard let e = try? WakeWordEngine(modelDir: kws, keywordsFile: tmp,
+                                              keywordsThreshold: threshold, keywordsScore: 2.0)
+            else { return false }
+            return e.detects(in: audio)
+        })
+
+    let r = enroll.enroll(samples: samples)
+    print("\n  === ENROLLMENT RESULT (dry run — not saved) ===")
+    print("  keyword lines:"); for l in r.keywordLines { print("    \(l)") }
+    print("  threshold: \(r.threshold)")
+    print("  all samples fire: \(r.allFired ? "✅ YES" : "❌ NO")")
+    print("  derived from voice: \(r.usedFallbackOnly ? "NO (fallback only)" : "YES")")
+    print("\n  per-sample (at threshold \(r.threshold)):")
+    let labels = ["isolated-1", "isolated-2", "natural   "]
+    for (i, s) in samples.enumerated() {
+        let toks = KwsDebug.decodeTokens(modelDir: kws, samples: s.audio).tokens
+        let f = enroll.fires(r.keywordLines, r.threshold, s.audio)
+        print("    \(labels[i]): fires \(f ? "✅" : "❌")   tokens=\(toks)")
+    }
+    return true
+}
+
 // DIAG 1 — audio sanity: transcribe the EXACT wake clip used by the wake test.
 func probeTranscribeOnly() -> Bool {
     print("PROBE asr transcript of hey_claude_only")
@@ -343,6 +395,7 @@ func main() -> Int32 {
     maybe("wake-probe", probeWake)
     maybe("decode-probe", probeDecode)
     maybe("mic-decode", probeMicDecode)
+    maybe("enroll", probeEnroll)
     maybe("asr-only", probeTranscribeOnly)
     maybe("boost-sweep", probeBoostSweep)
     maybe("asr", checkTranscribe)

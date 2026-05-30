@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "HeyClaude",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("14.4")],   // NSHostingMenu (status-item menu) needs 14.4+
     products: [
         .library(name: "HeyClaudeKit", targets: ["HeyClaudeKit"]),
         .executable(name: "heyclaude", targets: ["heyclaude"]),

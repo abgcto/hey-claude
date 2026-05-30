@@ -36,7 +36,12 @@ private func logRoute(_ o: VoiceSession.Outcome) {
 final class AppController {
     private(set) var state: AppState = .armed
     private(set) var recent = RecentActions()
-    let settings: Settings
+    private(set) var settings: Settings
+
+    /// Set by the app layer (HeyClaudeApp) to present the onboarding window when
+    /// first-run setup hasn't happened. `start()` calls this instead of booting
+    /// the listening pipeline. nil before the window layer is wired.
+    var onNeedsOnboarding: (() -> Void)?
 
     private let machine = AppStateMachine()
     private let recentLog = RecentActions()
@@ -67,10 +72,20 @@ final class AppController {
 
         // Bring up the island first so even the `.micDenied` early-out below
         // renders correctly (it maps to `.off` → hidden, ordering the panel out).
-        if settings.islandVisible {
+        // DIAGNOSTIC: touch /tmp/hc_no_island to skip the island and isolate the
+        // menu-bar item (works through the normal `open` launch path).
+        let skipIsland = FileManager.default.fileExists(atPath: "/tmp/hc_no_island")
+        if settings.islandVisible && !skipIsland {
             island = NotchIslandPanel()
         }
         updateIsland()
+
+        // First run: don't boot the listening pipeline — hand off to onboarding
+        // (which trains the wake word, then calls `completeOnboarding()`).
+        guard settings.onboardingCompleted else {
+            onNeedsOnboarding?()
+            return
+        }
 
         guard let modelsDir = resolveModelsDir() else {
             emit(.micDenied)   // surfaced as `.off`: no models means nothing to run
@@ -91,9 +106,12 @@ final class AppController {
         self.executor = executor
 
         do {
+            // Prefer the per-user keyword from enrollment; fall back to bundled.
+            let keywordsFile = KeywordStore().urlIfPresent
+                ?? modelsDir.appendingPathComponent("keywords.txt")
             let wake = try WakeWordEngine(
                 modelDir: modelsDir.appendingPathComponent("sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
-                keywordsFile: modelsDir.appendingPathComponent("keywords.txt"),
+                keywordsFile: keywordsFile,
                 keywordsThreshold: settings.wakeKeywordsThreshold,
                 keywordsScore: settings.wakeKeywordsScore)
             let transcriber = try ParakeetTranscriber(
@@ -158,6 +176,46 @@ final class AppController {
             emit(.micDenied)
         }
     }
+
+    /// The resolved models directory (KWS + ASR live under here), or nil if
+    /// missing. Exposed so onboarding can drive enrollment off the same models.
+    var modelsDirectory: URL? { resolveModelsDir() }
+
+    /// Finish onboarding: persist the enrolled per-user keyword + tuned threshold
+    /// + chosen terminal/folder, mark done, and boot the listening pipeline (which
+    /// then picks up the per-user keyword via `start()`'s resolution).
+    func finishOnboarding(keywordLines: [String], threshold: Float,
+                          terminal: TerminalKind, projectDirectory: String) {
+        if !keywordLines.isEmpty { try? KeywordStore().save(lines: keywordLines) }
+        var s = settings
+        s.wakeKeywordsThreshold = threshold
+        s.preferredTerminal = terminal
+        s.projectDirectory = projectDirectory
+        s.onboardingCompleted = true
+        try? SettingsStore().save(s)
+        settings = s
+        restartPipeline()
+    }
+
+    /// Skip enrollment: mark done (falls back to the bundled keyword) and boot.
+    func completeOnboarding() {
+        var s = settings
+        s.onboardingCompleted = true
+        try? SettingsStore().save(s)
+        settings = s
+        restartPipeline()
+    }
+
+    /// Tear down any running capture and (re)boot from the current settings —
+    /// used after onboarding / re-run so we never stack a second mic tap.
+    private func restartPipeline() {
+        audio?.stop(); audio = nil
+        wake = nil; transcriber = nil; capture = nil; voice = nil; executor = nil
+        didStart = false
+        start()
+    }
+
+    var needsOnboarding: Bool { !settings.onboardingCompleted }
 
     /// Sticky user mute. `AudioCapture` enforces the gate on its own queue, so
     /// the controller only flips the flag and reflects it in `AppState`.

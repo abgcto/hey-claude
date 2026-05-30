@@ -7,6 +7,7 @@ import HeyClaudeKit
 /// icon does.
 struct MenuContentView: View {
     let controller: AppController
+    var onboarding: OnboardingWindowController?
 
     private var statusLine: String {
         switch controller.state {
@@ -44,6 +45,10 @@ struct MenuContentView: View {
         }
 
         Divider()
+
+        Button("Set up Hey Claude\u{2026}") {
+            onboarding?.show()
+        }
 
         Button("Quit Hey Claude") {
             NSApplication.shared.terminate(nil)

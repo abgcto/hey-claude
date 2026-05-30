@@ -25,6 +25,7 @@ public struct Settings: Codable, Equatable, Sendable {
     public var defaultCommandID: String           // bare "hey claude"
     public var promptCommandID: String            // freeform prompt fallthrough
     public var islandVisible: Bool                // show the notch island (3B-2)
+    public var onboardingCompleted: Bool          // first-run wake enrollment + setup done
 
     public init(projectDirectory: String = NSHomeDirectory(),
                 preferredTerminal: TerminalKind = .terminalApp,
@@ -37,7 +38,8 @@ public struct Settings: Codable, Equatable, Sendable {
                 commands: [Command] = Command.seededDefaults,
                 defaultCommandID: String = "claude-desktop",
                 promptCommandID: String = "claude-code",
-                islandVisible: Bool = true) {
+                islandVisible: Bool = true,
+                onboardingCompleted: Bool = false) {
         self.projectDirectory = projectDirectory
         self.preferredTerminal = preferredTerminal
         self.wakeKeywordsScore = wakeKeywordsScore
@@ -50,6 +52,7 @@ public struct Settings: Codable, Equatable, Sendable {
         self.defaultCommandID = defaultCommandID
         self.promptCommandID = promptCommandID
         self.islandVisible = islandVisible
+        self.onboardingCompleted = onboardingCompleted
     }
 
     /// Custom decoding so legacy settings JSON written before the command
@@ -75,6 +78,8 @@ public struct Settings: Codable, Equatable, Sendable {
             ?? "claude-code"
         self.islandVisible = try container.decodeIfPresent(Bool.self, forKey: .islandVisible)
             ?? true
+        self.onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted)
+            ?? false
     }
 
     public static let `default` = Settings()
