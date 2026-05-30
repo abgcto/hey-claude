@@ -15,7 +15,7 @@ struct OnboardingView: View {
     // Palette (pure black per spec; off-white ink).
     private let ink = Color(red: 0.953, green: 0.949, blue: 0.937)   // #f3f2ef
     private let inkSoft = Color(red: 0.612, green: 0.596, blue: 0.561)
-    private let inkFaint = Color(red: 0.427, green: 0.416, blue: 0.392)
+    private let inkFaint = Color(red: 0.48, green: 0.47, blue: 0.445)   // ~4.8:1 on black → WCAG AA
     private let hairStrong = Color(red: 0.216, green: 0.216, blue: 0.239)
 
     /// General Sans, with graceful system fallback if the font isn't registered.
@@ -53,82 +53,121 @@ struct OnboardingView: View {
 
     // MARK: - Steps
 
-    private var welcome: some View {
+    /// Constant inset so the primary control sits at the SAME height on every step
+    /// (no vertical jump as you advance). Content is centered in the space above.
+    private let footerInset: CGFloat = 36
+
+    private func scaffold<C: View, F: View>(
+        @ViewBuilder content: () -> C,
+        @ViewBuilder footer: () -> F
+    ) -> some View {
         VStack(spacing: 0) {
-            Spacer()
-            MascotView().frame(width: 66, height: 41)
-            Text("Hey Claude").font(gs(30, .medium)).tracking(-0.6).padding(.top, 24)
-            Text("Talk to launch Claude Code.").font(gs(14)).foregroundStyle(inkSoft).padding(.top, 11)
-            Spacer()
+            Spacer(minLength: 24)
+            content()
+            Spacer(minLength: 24)
+            footer().padding(.bottom, footerInset)
+        }
+    }
+
+    private var welcome: some View {
+        scaffold {
+            VStack(spacing: 0) {
+                MascotView().frame(width: 66, height: 41)
+                Text("Hey Claude").font(gs(28, .medium)).tracking(-0.6).padding(.top, 24)
+                Text("Talk to launch Claude Code.").font(gs(14)).foregroundStyle(inkSoft).padding(.top, 11)
+            }
+        } footer: {
             actionButton("Get started") { model.goToMic() }
-            Spacer().frame(height: 30)
         }
     }
 
     private var mic: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            Text("Listening for your voice").font(gs(22, .medium)).tracking(-0.4)
-            Text("Hey Claude waits quietly for the wake word, then opens Claude Code.")
-                .font(gs(14)).foregroundStyle(inkSoft).multilineTextAlignment(.center)
-                .frame(maxWidth: 300).padding(.top, 12)
-            if !model.micGranted && !model.statusLine.isEmpty {
-                Text(model.statusLine).font(gs(12)).foregroundStyle(inkSoft)
-                    .multilineTextAlignment(.center).frame(maxWidth: 320).padding(.top, 16)
+        scaffold {
+            VStack(spacing: 0) {
+                Image(systemName: "mic.fill").font(.system(size: 26, weight: .medium))
+                    .accessibilityHidden(true)
+                Text("Launch Claude with your voice").font(gs(22, .medium)).tracking(-0.4).padding(.top, 22)
+                Text("Hey Claude waits quietly for the wake word, then opens Claude Code.")
+                    .font(gs(14)).foregroundStyle(inkSoft).multilineTextAlignment(.center)
+                    .frame(maxWidth: 300).padding(.top, 12)
             }
-            Spacer()
+        } footer: {
+            // Privacy reassurance (the ask state) or, once denied, the path to fix
+            // it in System Settings — sits just above the constant-height button.
+            //
             // No "Not now" escape: Hey Claude is a voice product — without mic it
             // can't do anything. Granting is the only forward path. Closing the
             // window leaves onboarding pending (re-prompts next launch), so a
             // dismissal defers rather than ditching into a dead, mic-denied app.
-            if model.micDenied {
-                actionButton("Open System Settings") { model.openMicSettings() }
-            } else {
-                actionButton("Allow microphone") { model.requestMicAndTrain() }
+            VStack(spacing: 16) {
+                if model.micDenied {
+                    Text(model.statusLine.isEmpty
+                         ? "Enable microphone access in System Settings \u{25B8} Privacy \u{25B8} Microphone."
+                         : model.statusLine)
+                        .font(gs(12)).foregroundStyle(inkSoft)
+                        .multilineTextAlignment(.center).frame(maxWidth: 320)
+                    actionButton("Open System Settings") { model.openMicSettings() }
+                } else {
+                    Text("\(Image(systemName: "lock.fill"))  Audio never leaves your Mac. It all runs on-device.")
+                        .font(gs(12)).foregroundStyle(inkFaint)
+                        .accessibilityLabel("Audio never leaves your Mac. It all runs on-device.")
+                    actionButton("Allow microphone") { model.requestMicAndTrain() }
+                }
             }
-            Spacer().frame(height: 30)
         }
     }
 
     private var train: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            if model.enrolling {
-                ProgressView().controlSize(.small).tint(ink)
-                Text(model.statusLine).font(gs(16, .medium)).padding(.top, 20)
-            } else {
-                Text("STEP \(min(model.capturedCount + 1, model.totalSamples)) OF \(model.totalSamples)")
-                    .font(gs(10, .medium)).tracking(2).foregroundStyle(inkFaint)
-                trainingIndicator.frame(height: 28).padding(.top, 30)
-                if model.isRecording {
-                    // The exact words to read aloud + the small action label.
-                    Text("\u{201C}\(model.trainingPhrase)\u{201D}")
-                        .font(gs(22, .medium)).tracking(-0.4).multilineTextAlignment(.center)
-                        .padding(.top, 34)
-                    Text(model.trainingHint)
-                        .font(gs(12.5)).foregroundStyle(inkFaint).padding(.top, 11)
+        scaffold {
+            Group {
+                if model.enrolling {
+                    VStack(spacing: 0) {
+                        ProgressView().controlSize(.small).tint(ink)
+                        Text(model.statusLine).font(gs(16, .medium)).padding(.top, 20)
+                    }
                 } else {
-                    // Brief feedback after a capture — pops in, varies per rep,
-                    // success draws a checkmark.
-                    FeedbackPop(text: model.statusLine, success: model.lastCaptureOK,
-                                font: gs(22, .medium), color: ink)
+                    VStack(spacing: 0) {
+                        Text("STEP \(min(model.capturedCount + 1, model.totalSamples)) OF \(model.totalSamples)")
+                            .font(gs(10, .medium)).tracking(2).foregroundStyle(inkFaint)
+                        trainingIndicator.frame(height: 28).padding(.top, 30)
+                        // Fixed-height well so the prompt (phrase + hint, up to two
+                        // lines) and the one-line "Got it ✓" feedback occupy the SAME
+                        // space — the cluster never resizes/shifts between reps.
+                        Group {
+                            if model.isRecording {
+                                VStack(spacing: 11) {
+                                    // The exact words to read aloud + the small action label.
+                                    Text("\u{201C}\(model.trainingPhrase)\u{201D}")
+                                        .font(gs(22, .medium)).tracking(-0.4).multilineTextAlignment(.center)
+                                    Text(model.trainingHint)
+                                        .font(gs(12.5)).foregroundStyle(inkFaint)
+                                }
+                            } else {
+                                // Brief feedback after a capture — pops in, varies per
+                                // rep, success draws a checkmark.
+                                FeedbackPop(text: model.statusLine, success: model.lastCaptureOK,
+                                            font: gs(22, .medium), color: ink)
+                            }
+                        }
+                        .frame(height: 88)
                         .padding(.top, 34)
+                    }
                 }
             }
-            Spacer()
-            HStack(spacing: 9) {
-                ForEach(0..<model.totalSamples, id: \.self) { i in
-                    Circle().fill(i < model.capturedCount ? ink : hairStrong)
-                        .frame(width: 7, height: 7)
+        } footer: {
+            VStack(spacing: 18) {
+                HStack(spacing: 9) {
+                    ForEach(0..<model.totalSamples, id: \.self) { i in
+                        Circle().fill(i < model.capturedCount ? ink : hairStrong)
+                            .frame(width: 7, height: 7)
+                    }
+                }
+                .opacity(model.enrolling ? 0 : 1)
+                if !model.enrolling {
+                    Button("Skip for now") { model.skipTraining() }
+                        .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkFaint)
                 }
             }
-            .opacity(model.enrolling ? 0 : 1)
-            if !model.enrolling {
-                Button("Skip for now") { model.skipTraining() }
-                    .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkFaint)
-                    .padding(.top, 18)
-            }
-            Spacer().frame(height: 34)
         }
     }
 
@@ -142,39 +181,40 @@ struct OnboardingView: View {
     }
 
     private var setup: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            Spacer()
-            // Icon-switcher selector for where Claude Code opens.
-            field("CLAUDE CODE OPENS IN") { targetPicker }
-                .padding(.bottom, 18)   // extra air before the folder chooser
-            field("PROJECT FOLDER") {
-                HStack(spacing: 11) {
-                    Text(model.projectDirectory).font(gs(14)).lineLimit(1).truncationMode(.head)
-                    Spacer()
-                    Button("Choose\u{2026}") { model.chooseFolder() }
-                        .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkSoft)
+        scaffold {
+            VStack(alignment: .leading, spacing: 28) {
+                // Icon-switcher selector for where Claude Code opens.
+                field("CLAUDE CODE OPENS IN") { targetPicker }
+                    .padding(.bottom, 18)   // extra air before the folder chooser
+                field("PROJECT FOLDER") {
+                    HStack(spacing: 11) {
+                        Text(model.projectDirectory).font(gs(14)).lineLimit(1).truncationMode(.head)
+                        Spacer()
+                        Button("Choose\u{2026}") { model.chooseFolder() }
+                            .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkSoft)
+                    }
+                    .padding(.vertical, 11)
+                    .overlay(Rectangle().fill(hairStrong).frame(height: 1), alignment: .bottom)
                 }
-                .padding(.vertical, 11)
-                .overlay(Rectangle().fill(hairStrong).frame(height: 1), alignment: .bottom)
             }
-            Spacer()
-            actionButton("Continue") { model.goToReady() }.frame(maxWidth: .infinity)
-            Spacer().frame(height: 30)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } footer: {
+            actionButton("Continue") { model.goToReady() }
         }
     }
 
     private var ready: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            MascotView().frame(width: 66, height: 41)
-                .opacity(model.flying ? 0 : 1)   // hand off to the flying mascot
-            Text("You\u{2019}re all set").font(gs(23, .medium)).tracking(-0.4).padding(.top, 22)
-            Text("Say \u{201C}Hey Claude\u{201D} anytime to launch Claude Code.")
-                .font(gs(14)).foregroundStyle(inkSoft).multilineTextAlignment(.center)
-                .frame(maxWidth: 320).padding(.top, 12)
-            Spacer()
+        scaffold {
+            VStack(spacing: 0) {
+                MascotView().frame(width: 66, height: 41)
+                    .opacity(model.flying ? 0 : 1)   // hand off to the flying mascot
+                Text("You\u{2019}re all set").font(gs(28, .medium)).tracking(-0.4).padding(.top, 22)
+                Text("Say \u{201C}Hey Claude\u{201D} anytime to launch Claude Code.")
+                    .font(gs(14)).foregroundStyle(inkSoft).multilineTextAlignment(.center)
+                    .frame(maxWidth: 320).padding(.top, 12)
+            }
+        } footer: {
             actionButton("Done") { model.finish() }   // flies home, then commits + closes
-            Spacer().frame(height: 30)
         }
     }
 
@@ -189,11 +229,12 @@ struct OnboardingView: View {
 
     private func actionButton(_ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(gs(13.5, .medium)).foregroundStyle(.black)
-                .padding(.horizontal, 26).padding(.vertical, 10)
+            Text(title).font(gs(15, .medium)).foregroundStyle(.black)
+                .padding(.horizontal, 28).padding(.vertical, 11)   // hugs the label
                 .background(RoundedRectangle(cornerRadius: 9).fill(ink))
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(.defaultAction)   // Return advances the wizard
     }
 
     // MARK: - Target picker (icon switcher: app-icon row, selected grows)
