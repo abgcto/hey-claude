@@ -17,6 +17,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/HeyClaude"
 cp "$ROOT/scripts/Info.plist" "$APP/Contents/Info.plist"
 
+# App icon (Finder / About panel / .app file icon). Build it if missing.
+[ -f "$ROOT/Resources/AppIcon.icns" ] || "$ROOT/scripts/make-appicon.sh"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+
 # Dev: point the app at the repo's Models via symlink (Bundle.main.resourceURL/Models).
 ln -sfn "$ROOT/Models" "$APP/Contents/Resources/Models"
 
