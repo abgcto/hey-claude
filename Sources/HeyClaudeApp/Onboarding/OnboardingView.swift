@@ -54,7 +54,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             Spacer()
             MascotView().frame(width: 66, height: 41)
-            Text("Hey Claude").font(gs(30, .semibold)).tracking(-0.6).padding(.top, 24)
+            Text("Hey Claude").font(gs(30, .medium)).tracking(-0.6).padding(.top, 24)
             Text("Talk to launch Claude Code.").font(gs(14)).foregroundStyle(inkSoft).padding(.top, 11)
             Spacer()
             actionButton("Get started") { model.goToMic() }
@@ -65,7 +65,7 @@ struct OnboardingView: View {
     private var mic: some View {
         VStack(spacing: 0) {
             Spacer()
-            Text("Listening for your voice").font(gs(22, .semibold)).tracking(-0.4)
+            Text("Listening for your voice").font(gs(22, .medium)).tracking(-0.4)
             Text("Hey Claude waits quietly for the wake word, then opens Claude Code.")
                 .font(gs(14)).foregroundStyle(inkSoft).multilineTextAlignment(.center)
                 .frame(maxWidth: 300).padding(.top, 12)
@@ -96,7 +96,7 @@ struct OnboardingView: View {
                 if model.isRecording {
                     // The exact words to read aloud + the small action label.
                     Text("\u{201C}\(model.trainingPhrase)\u{201D}")
-                        .font(gs(22, .semibold)).tracking(-0.4).multilineTextAlignment(.center)
+                        .font(gs(22, .medium)).tracking(-0.4).multilineTextAlignment(.center)
                         .padding(.top, 34)
                     Text(model.trainingHint)
                         .font(gs(12.5)).foregroundStyle(inkFaint).padding(.top, 11)
@@ -104,7 +104,7 @@ struct OnboardingView: View {
                     // Brief feedback after a capture — pops in, varies per rep,
                     // success draws a checkmark.
                     FeedbackPop(text: model.statusLine, success: model.lastCaptureOK,
-                                font: gs(22, .semibold), color: ink)
+                                font: gs(22, .medium), color: ink)
                         .padding(.top, 34)
                 }
             }
@@ -166,12 +166,13 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             Spacer()
             MascotView().frame(width: 66, height: 41)
-            Text("You\u{2019}re all set").font(gs(23, .semibold)).tracking(-0.4).padding(.top, 22)
+                .opacity(model.flying ? 0 : 1)   // hand off to the flying mascot
+            Text("You\u{2019}re all set").font(gs(23, .medium)).tracking(-0.4).padding(.top, 22)
             Text("Say \u{201C}Hey Claude\u{201D} anytime to launch Claude Code.")
                 .font(gs(14)).foregroundStyle(inkSoft).multilineTextAlignment(.center)
                 .frame(maxWidth: 320).padding(.top, 12)
             Spacer()
-            actionButton("Done") { model.finish(); onClose() }
+            actionButton("Done") { model.finish() }   // flies home, then commits + closes
             Spacer().frame(height: 30)
         }
     }

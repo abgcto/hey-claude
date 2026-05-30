@@ -27,6 +27,10 @@ final class OnboardingModel {
     var terminal: TerminalKind
     var projectDirectory: String
 
+    /// Set by the window layer: runs the finale (close the window at once, fly the
+    /// mascot home, then commit on landing). nil → commit immediately.
+    var onDone: (() -> Void)?
+
     private unowned let controller: AppController
     private var samples: [WakeEnrollment.Sample] = []
     private var recorder: EnrollmentRecorder?
@@ -52,8 +56,12 @@ final class OnboardingModel {
         AVCaptureDevice.requestAccess(for: .audio) { granted in
             Task { @MainActor in
                 self.micGranted = granted
-                if granted { self.step = .train; self.beginTraining() }
-                else { self.statusLine = "Microphone access is needed — enable it in System Settings ▸ Privacy ▸ Microphone." }
+                guard granted else {
+                    self.statusLine = "Microphone access is needed — enable it in System Settings ▸ Privacy ▸ Microphone."
+                    return
+                }
+                self.step = .train
+                self.beginTraining()
             }
         }
     }
@@ -77,7 +85,7 @@ final class OnboardingModel {
 
     func beginTraining() {
         samples.removeAll(); capturedCount = 0; attempts = 0
-        recordNext()
+        recordNext()   // notch stays the empty shell; the mascot flies home on "Done"
     }
 
     private func recordNext() {
@@ -171,8 +179,24 @@ final class OnboardingModel {
 
     func goToReady() { step = .ready }
 
-    /// Persist enrollment + setup choices and boot the pipeline.
+    /// True from "Done" until dismissal — the Ready screen hides its mascot so the
+    /// flying one is the only one (a clean hand-off).
+    private(set) var flying = false
+
+    /// Done: hand off to the window layer's finale (close window + fly + commit).
+    /// With no finale hook, commit immediately.
     func finish() {
+        if let onDone {
+            flying = true
+            onDone()
+        } else {
+            commitFinish()
+        }
+    }
+
+    /// Persist enrollment + setup choices and boot the resident island/pipeline.
+    /// Called by the finale once the mascot lands.
+    func commitFinish() {
         controller.finishOnboarding(
             keywordLines: enrollResult?.keywordLines ?? [],
             threshold: enrollResult?.threshold ?? controller.settings.wakeKeywordsThreshold,

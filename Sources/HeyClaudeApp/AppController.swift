@@ -72,7 +72,10 @@ final class AppController {
 
         // Bring up the island first so even the `.micDenied` early-out below
         // renders correctly (it maps to `.off` → hidden, ordering the panel out).
-        if settings.islandVisible {
+        // Reuse the existing panel if there is one (e.g. the onboarding finale set
+        // it to the resident island already) — recreating it mid-hand-off causes a
+        // visible flicker while the pipeline's models load synchronously.
+        if settings.islandVisible && island == nil {
             island = NotchIslandPanel()
         }
 
@@ -217,6 +220,19 @@ final class AppController {
     }
 
     var needsOnboarding: Bool { !settings.onboardingCompleted }
+
+    /// The notch's state during onboarding (driven by the choreography):
+    /// `empty` shell before training → `listening` (mascot arrives + equalizer)
+    /// during training → `resting` (mascot lives in the notch) afterward.
+    enum OnboardingIsland { case empty, listening, resting }
+    func setOnboardingIsland(_ s: OnboardingIsland) {
+        guard let island else { return }
+        switch s {
+        case .empty:     island.update(.onboardingPlaceholder)
+        case .listening: island.update(IslandModel(state: .hot, transcript: nil))    // mascot + equalizer
+        case .resting:   island.update(IslandModel(state: .armed, transcript: nil))   // mascot at rest
+        }
+    }
 
     /// Sticky user mute. `AudioCapture` enforces the gate on its own queue, so
     /// the controller only flips the flag and reflects it in `AppState`.
