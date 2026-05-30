@@ -36,8 +36,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         let model = OnboardingModel(controller: controller)
         self.model = model
         model.onDone = { [weak self] in self?.runFinale() }
-        let host = NSHostingView(rootView: OnboardingView(model: model,
-                                                          onClose: { [weak self] in self?.close() }))
+        let host = NSHostingView(rootView: OnboardingView(model: model))
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 520),
                            styleMask: [.titled, .closable, .fullSizeContentView],
                            backing: .buffered, defer: false)
@@ -111,7 +110,12 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     /// is already closing, and re-closing would recurse.
     func windowWillClose(_ notification: Notification) {
         if committed { return }
-        model?.skip()
+        // Only finalize once mic access is granted — the product can't function
+        // without it. Closing before that leaves onboarding pending (we don't
+        // mark it complete), so it re-appears next launch instead of dropping the
+        // user into a dead, mic-denied app. Once mic is granted, a mid-flow close
+        // finalizes with sensible defaults (bundled keyword).
+        if model?.micGranted == true { model?.skip() }
         flight.dismiss()
         model = nil
         window = nil

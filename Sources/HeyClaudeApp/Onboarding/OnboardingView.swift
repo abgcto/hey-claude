@@ -7,7 +7,6 @@ import HeyClaudeKit
 /// during training (wired in AppController, P4). 600×450 landscape window.
 struct OnboardingView: View {
     @Bindable var model: OnboardingModel
-    let onClose: () -> Void
 
     /// A disabled editor the user tapped to see *why* it's unavailable. Drives the
     /// name/subtitle area without changing the actual launch target. nil = normal.
@@ -78,14 +77,14 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center).frame(maxWidth: 320).padding(.top, 16)
             }
             Spacer()
-            VStack(spacing: 12) {
-                if model.micDenied {
-                    actionButton("Open System Settings") { model.openMicSettings() }
-                } else {
-                    actionButton("Allow microphone") { model.requestMicAndTrain() }
-                }
-                Button("Not now") { model.skip(); onClose() }
-                    .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkFaint)
+            // No "Not now" escape: Hey Claude is a voice product — without mic it
+            // can't do anything. Granting is the only forward path. Closing the
+            // window leaves onboarding pending (re-prompts next launch), so a
+            // dismissal defers rather than ditching into a dead, mic-denied app.
+            if model.micDenied {
+                actionButton("Open System Settings") { model.openMicSettings() }
+            } else {
+                actionButton("Allow microphone") { model.requestMicAndTrain() }
             }
             Spacer().frame(height: 30)
         }
