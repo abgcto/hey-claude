@@ -3,47 +3,6 @@ import AppKit
 import Observation
 import HeyClaudeKit
 
-// TEMP DIAGNOSTIC: trace the status-item lifecycle to a file (NSLog isn't reliably
-// queryable for this app). Remove once the menu-bar icon is confirmed working.
-func appTrace(_ s: String) {
-    let line = "\(Date()) \(s)\n"
-    let url = URL(fileURLWithPath: "/tmp/hc_app_trace.log")
-    if let h = try? FileHandle(forWritingTo: url) {
-        h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
-    } else { try? line.write(to: url, atomically: true, encoding: .utf8) }
-}
-
-// TEMP DIAGNOSTIC: start each launch with a fresh trace file.
-func appTraceReset() {
-    try? "".write(to: URL(fileURLWithPath: "/tmp/hc_app_trace.log"), atomically: true, encoding: .utf8)
-}
-
-// TEMP DIAGNOSTIC: where did macOS actually place the status button, and on which
-// screen? On a notched Mac, `auxiliaryTopRightArea` is the usable menu-bar strip to
-// the RIGHT of the notch — if the button's x exceeds that (or its window is nil /
-// on another screen) the icon is being clipped/hidden by macOS, not a render bug.
-@MainActor
-func appTraceGeometry(_ item: NSStatusItem, _ tag: String) {
-    appTrace("[\(tag)] barThickness=\(NSStatusBar.system.thickness)")
-    if let b = item.button {
-        appTrace("[\(tag)] button.frame=\(b.frame) button.isHidden=\(b.isHidden)")
-        if let w = b.window {
-            let scr = w.screen.map { NSScreen.screens.firstIndex(of: $0).map(String.init) ?? "?" } ?? "nil"
-            appTrace("[\(tag)] win.frame=\(w.frame) win.isVisible=\(w.isVisible) win.screenIdx=\(scr)")
-        } else {
-            appTrace("[\(tag)] button.window=NIL  (item not attached to a status bar)")
-        }
-    } else {
-        appTrace("[\(tag)] button=NIL")
-    }
-    for (i, s) in NSScreen.screens.enumerated() {
-        appTrace("[\(tag)] screen[\(i)] frame=\(s.frame) safeTop=\(s.safeAreaInsets.top) auxL=\(s.auxiliaryTopLeftArea.map { "\($0)" } ?? "nil") auxR=\(s.auxiliaryTopRightArea.map { "\($0)" } ?? "nil")")
-    }
-    for w in NSApp.windows {
-        appTrace("[\(tag)] window class=\(type(of: w)) level=\(w.level.rawValue) frame=\(w.frame) visible=\(w.isVisible)")
-    }
-}
-
 /// Hey Claude menu-bar app (Phase 3A). Pure AppKit entry point: a plain
 /// `NSApplication` in `.accessory` mode with an `NSStatusItem` — NOT a SwiftUI
 /// `MenuBarExtra` and NOT a SwiftUI `App` scene.
@@ -65,9 +24,7 @@ enum HeyClaudeMain {
         let d = AppDelegate()
         delegate = d
         app.delegate = d
-        // NOTE: activation policy is now set inside applicationDidFinishLaunching
-        // (DIAGNOSTIC): the status-bar server may not adopt an item when the app
-        // boots straight into .accessory before finishing launch.
+        app.setActivationPolicy(.accessory)   // menu-bar agent: no Dock icon, no app menu
         app.run()
     }
 }
@@ -80,35 +37,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        appTraceReset()
-        appTrace("didFinishLaunching ENTER policy=\(NSApp.activationPolicy().rawValue)")
-        NSApp.setActivationPolicy(.accessory)   // DIAGNOSTIC: set here, not in main()
-        appTrace("after setActivationPolicy policy=\(NSApp.activationPolicy().rawValue)")
-        // Onboarding first, so the menu's "Set up…" item and the controller's
-        // first-run hook can both reference it.
+        // Onboarding owns its own window; the controller triggers it on first run.
         let ob = OnboardingWindowController(controller: controller)
         onboarding = ob
         controller.onNeedsOnboarding = { [weak ob] in ob?.show() }
 
-        // The status item. If the menu bar is full it hides — but the app stays
-        // alive (the whole reason we left MenuBarExtra).
+        // The status item, created FIRST with only its image. The image is plain
+        // button content (like a title) and places fine synchronously.
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.isVisible = true
         item.button?.image = MenuBarIcon.image(for: controller.state)
-        item.button?.title = "HC"   // TEMP PROBE — remove once the icon is confirmed
-        item.menu = NSHostingMenu(rootView: MenuContentView(controller: controller, onboarding: ob))
         statusItem = item
-        appTrace("statusItem: button=\(item.button != nil) image=\(item.button?.image != nil) visible=\(item.isVisible)")
-        appTraceGeometry(item, "sync")
-        // The button's window often isn't realized until the run loop spins.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-            guard let self, let item = self.statusItem else { return }
-            appTraceGeometry(item, "delayed")
-        }
 
-        controller.start()
-        observeState()
-        appTrace("didFinishLaunching DONE")
+        // CRITICAL — DO NOT make the menu attach or `controller.start()` synchronous.
+        // macOS places a new `NSStatusItem` ASYNCHRONOUSLY over the run loop. Two
+        // distinct operations, if performed DURING that placement pass, knock the
+        // item's window out of the menu bar (to ≈y−6, off-screen) so the icon never
+        // appears — observed on macOS 26:
+        //   1. assigning an `NSHostingMenu` (SwiftUI-hosted menu), and
+        //   2. ordering ANY window front — the notch island (via `controller.start()`)
+        //      or the onboarding window.
+        // A bare item (image only) places correctly. So we gate BOTH the menu attach
+        // AND the pipeline start behind confirmed placement.
+        whenStatusItemPlaced(item) { [weak self] in
+            guard let self, let item = self.statusItem else { return }
+            item.menu = NSHostingMenu(rootView: MenuContentView(controller: self.controller, onboarding: ob))
+            self.controller.start()
+            self.observeState()
+        }
+    }
+
+    /// Run `body` once the status item's window has actually been placed into the
+    /// menu bar. macOS positions a new `NSStatusItem` asynchronously over the run
+    /// loop; until then its window sits at the screen origin / off-screen. We poll
+    /// the button window's position (placed ⇒ up in the menu-bar strip, in the top
+    /// half of its own screen) every 50 ms, with a ~3 s safety cap so we never hang
+    /// if the item can't place (full bar): in that case we proceed anyway.
+    private func whenStatusItemPlaced(_ item: NSStatusItem, attempt: Int = 0, _ body: @escaping () -> Void) {
+        let placed: Bool = {
+            guard let win = item.button?.window, let screen = win.screen else { return false }
+            return win.frame.origin.y > screen.frame.midY
+        }()
+        if placed || attempt >= 60 {        // 60 × 50 ms ≈ 3 s safety cap
+            body()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.whenStatusItemPlaced(item, attempt: attempt + 1, body)
+        }
     }
 
     /// Keep the menu-bar icon in sync with `AppState`. `withObservationTracking`

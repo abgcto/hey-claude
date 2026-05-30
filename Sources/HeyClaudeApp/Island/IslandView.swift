@@ -21,6 +21,10 @@ struct IslandView: View {
     var notchWidth: CGFloat = 189
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Drives the empty-shell entrance: the placeholder blooms open (widens from a
+    /// sliver) when it first appears in the notch during onboarding.
+    @State private var entered = false
+
     // Skin (the locked palette).
     private let coral = Color(red: 1.0, green: 0.541, blue: 0.420)    // #ff8a6b
     private let violet = Color(red: 0.482, green: 0.361, blue: 1.0)   // #7b5cff
@@ -38,6 +42,10 @@ struct IslandView: View {
     }
 
     private var isMuted: Bool { model.visual == .muted }
+
+    /// Onboarding placeholder — the black band at resting width with no mascot or
+    /// content (the empty shell the mascot later flies into).
+    private var isEmpty: Bool { model.visual == .empty }
 
     /// The notch-row side zones (mascot left of the camera, compact content right).
     /// CONSTANT across every state so the band width never ping-pongs — the only
@@ -75,6 +83,18 @@ struct IslandView: View {
             // Paused dims hard (~60%); muted is only slightly dimmed.
             .opacity(model.dimmed ? 0.6 : (isMuted ? 0.78 : 1))
             .opacity(model.hidden ? 0 : 1)
+            // Empty-shell entrance: the placeholder blooms open — widening from a
+            // sliver (with a slight overshoot) the first time it appears in the
+            // notch during onboarding. Normal island states skip this (full size).
+            .scaleEffect(x: (entered || !isEmpty) ? 1 : 0.42,
+                         y: (entered || !isEmpty) ? 1 : 0.82, anchor: .top)
+            .opacity((entered || !isEmpty) ? 1 : 0)
+            .onAppear {
+                guard isEmpty, !reduceMotion else { entered = true; return }
+                withAnimation(.timingCurve(0.34, 1.2, 0.3, 1.0, duration: 0.55).delay(0.06)) {
+                    entered = true
+                }
+            }
             // One easing drives the grow/shrink AND the line cross-fade on any state change.
             .animation(shapeAnimation, value: model.visual)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.dimmed)
@@ -84,10 +104,18 @@ struct IslandView: View {
     /// (hearing + launching) add ONE line below the notch — no kicker, no subtitle.
     /// It grows the band to fit, then collapses back.
     private var islandContent: some View {
-        VStack(spacing: 0) {
-            notchRow { rightContent }
-            if isReveal {
-                revealLine
+        Group {
+            if isEmpty {
+                // The empty resting-width shell — the body frames it to the band
+                // width and fills it black, so this is just the bare pill.
+                Color.clear.frame(height: topInset)
+            } else {
+                VStack(spacing: 0) {
+                    notchRow { rightContent }
+                    if isReveal {
+                        revealLine
+                    }
+                }
             }
         }
     }
@@ -173,7 +201,7 @@ struct IslandView: View {
 
     @ViewBuilder private var rightContent: some View {
         switch model.visual {
-        case .hidden, .idle, .transcript, .launching:
+        case .hidden, .idle, .transcript, .launching, .empty:
             // hidden/armed show nothing on the right; transcript & launching put
             // their content BELOW the notch (see `revealLayout`), not here. The
             // mascot's presence alone signals "armed, listening for the wake word."

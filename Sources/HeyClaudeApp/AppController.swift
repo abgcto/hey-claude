@@ -72,20 +72,21 @@ final class AppController {
 
         // Bring up the island first so even the `.micDenied` early-out below
         // renders correctly (it maps to `.off` → hidden, ordering the panel out).
-        // DIAGNOSTIC: touch /tmp/hc_no_island to skip the island and isolate the
-        // menu-bar item (works through the normal `open` launch path).
-        let skipIsland = FileManager.default.fileExists(atPath: "/tmp/hc_no_island")
-        if settings.islandVisible && !skipIsland {
+        if settings.islandVisible {
             island = NotchIslandPanel()
         }
-        updateIsland()
 
-        // First run: don't boot the listening pipeline — hand off to onboarding
-        // (which trains the wake word, then calls `completeOnboarding()`).
+        // First run: don't boot the listening pipeline — hand off to onboarding.
+        // Make the placeholder the island's FIRST update (no idle flash before it),
+        // so the empty shell blooms cleanly into the notch through setup. The
+        // resident island only appears once onboarding is done; the choreography
+        // animates the mascot up to the notch itself.
         guard settings.onboardingCompleted else {
+            island?.update(.onboardingPlaceholder)   // empty island shell — blooms in at resting width
             onNeedsOnboarding?()
             return
         }
+        updateIsland()
 
         guard let modelsDir = resolveModelsDir() else {
             emit(.micDenied)   // surfaced as `.off`: no models means nothing to run

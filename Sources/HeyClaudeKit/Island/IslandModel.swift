@@ -17,6 +17,7 @@ public struct IslandModel: Equatable {
         case launching(String)      // working — taller band, "→ LAUNCHING" + the line (may be "")
         case muted                  // mic off — slashed-mic glyph, dimmed
         case paused                 // call-guard hold — violet pause glyph + label, dimmed
+        case empty                  // onboarding placeholder — black band at resting width, no content
     }
 
     public let shape: Shape
@@ -25,6 +26,15 @@ public struct IslandModel: Equatable {
     public let showsSlash: Bool   // muted
     public let dimmed: Bool       // paused / muted treatment
     public let hidden: Bool       // off
+
+    /// The empty resting-width island shell shown in the notch DURING onboarding,
+    /// before the mascot arrives — same width as the idle island, but no mascot or
+    /// content. Not derived from an `AppState`.
+    public static var onboardingPlaceholder: IslandModel { IslandModel(empty: ()) }
+    private init(empty: ()) {
+        shape = .seam; content = .none; visual = .empty
+        showsSlash = false; dimmed = false; hidden = false
+    }
 
     public init(state: AppState, transcript: String?, revealing: Bool = false) {
         switch state {
