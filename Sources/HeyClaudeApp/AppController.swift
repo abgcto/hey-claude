@@ -60,8 +60,8 @@ final class AppController {
     private var userMuted = false
     private var didStart = false
 
-    // The notch island (3B-2). Owned here; driven on every state change. `nil`
-    // when the user has hidden it (`settings.islandVisible == false`).
+    // The notch island (3B-2). Owned here; driven on every state change. Always
+    // present — the island IS the product's presence, so it's never user-hideable.
     private var island: NotchIslandPanel?
     // Held during the reveal beat: while `true` (and state is `.hot`) the island
     // shows the finalized transcript instead of "Listening…".
@@ -148,7 +148,7 @@ final class AppController {
         // Reuse the existing panel if there is one (e.g. the onboarding finale set
         // it to the resident island already) — recreating it mid-hand-off causes a
         // visible flicker while the pipeline's models load synchronously.
-        if settings.islandVisible && island == nil {
+        if island == nil {
             island = NotchIslandPanel()
         }
 

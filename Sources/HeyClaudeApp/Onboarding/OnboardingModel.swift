@@ -130,7 +130,7 @@ final class OnboardingModel {
 
     /// Open System Settings ▸ Privacy ▸ Microphone so the user can grant access.
     func openMicSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+        SystemSettingsLink.microphone.open()
     }
 
     /// Re-check on window refocus: if the user granted mic access in System

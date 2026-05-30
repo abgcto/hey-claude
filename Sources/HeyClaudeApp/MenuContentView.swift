@@ -36,6 +36,12 @@ struct MenuContentView: View {
             .foregroundStyle(.secondary)
             .truncationMode(.middle)
 
+        // Mic-revoked recovery: the only actionable thing in the `.off` state, so
+        // the status line above ("Microphone access needed") isn't a dead end.
+        if controller.state == .off {
+            Button("Open Microphone Settings\u{2026}") { SystemSettingsLink.microphone.open() }
+        }
+
         // Persistent failure detail — held until the next successful launch, so the
         // error survives the brief island beat and stays inspectable + actionable.
         if let failure = controller.lastFailure {
@@ -101,6 +107,12 @@ struct MenuContentView: View {
         }
 
         Divider()
+
+        // App-level setting (grouped with Set up / Quit). Backed by SMAppService —
+        // the toggle reads/writes the real registration each time the menu opens.
+        Toggle("Launch at login", isOn: Binding(
+            get: { LoginItem.isEnabled },
+            set: { LoginItem.setEnabled($0) }))
 
         Button("Set up Hey Claude\u{2026}") {
             onboarding?.show()

@@ -33,7 +33,6 @@ public struct Settings: Codable, Equatable, Sendable {
     public var commands: [Command]                // the voice-triggerable command registry
     public var defaultCommandID: String           // bare "hey claude"
     public var promptCommandID: String            // freeform prompt fallthrough
-    public var islandVisible: Bool                // show the notch island (3B-2)
     public var onboardingCompleted: Bool          // first-run wake enrollment + setup done
 
     public init(projectDirectory: String = NSHomeDirectory(),
@@ -47,7 +46,6 @@ public struct Settings: Codable, Equatable, Sendable {
                 commands: [Command] = Command.seededDefaults,
                 defaultCommandID: String = "claude-code",
                 promptCommandID: String = "claude-code",
-                islandVisible: Bool = true,
                 onboardingCompleted: Bool = false) {
         self.projectDirectory = projectDirectory
         self.preferredTarget = preferredTarget
@@ -60,7 +58,6 @@ public struct Settings: Codable, Equatable, Sendable {
         self.commands = commands
         self.defaultCommandID = defaultCommandID
         self.promptCommandID = promptCommandID
-        self.islandVisible = islandVisible
         self.onboardingCompleted = onboardingCompleted
     }
 
@@ -115,8 +112,8 @@ public struct Settings: Codable, Equatable, Sendable {
         self.defaultCommandID = (rawDefault == "claude-desktop") ? "claude-code" : rawDefault
         self.promptCommandID = try container.decodeIfPresent(String.self, forKey: .promptCommandID)
             ?? "claude-code"
-        self.islandVisible = try container.decodeIfPresent(Bool.self, forKey: .islandVisible)
-            ?? true
+        // (legacy `islandVisible` keys in old settings JSON are ignored — the island
+        // is always present now.)
         self.onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted)
             ?? false
     }
