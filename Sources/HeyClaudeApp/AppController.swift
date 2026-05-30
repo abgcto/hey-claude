@@ -61,7 +61,9 @@ final class AppController {
     private var transcriber: ParakeetTranscriber?
     private var capture: CaptureSession?
     private var voice: VoiceSession?
-    private var executor: CommandExecutor?
+    /// Live launch executor, boxed so target/folder changes can hot-swap it
+    /// without rebooting the pipeline. See `CommandExecutorHolder`.
+    private var executor: CommandExecutorHolder?
     private var userMuted = false
     private var didStart = false
 
@@ -132,15 +134,25 @@ final class AppController {
         return EditorKind.allCases.filter { missing.contains($0) }
     }
 
-    /// Change the default target from the menu: persist and reboot the pipeline
-    /// so the live executor picks up the new setting.
+    /// Builds a `CommandExecutor` snapshotting the current `settings`. The
+    /// `launcherFor` closure is stateless, so this is cheap — no model or audio
+    /// work. Used at pipeline boot and to hot-swap target/folder changes.
+    private func makeExecutor() -> CommandExecutor {
+        CommandExecutor(settings: settings, launcherFor: { Self.launcher(for: $0) })
+    }
+
+    /// Change the default target from the menu / Settings: persist and hot-swap the
+    /// live executor in place. No pipeline restart — the target only changes *where*
+    /// a command launches, not the speech models, so rebooting them would be wasteful
+    /// (a ~1s freeze reloading ~650MB on the main actor). If the pipeline hasn't
+    /// started yet, `executor` is nil and `start()` builds it from the new setting.
     func setPreferredTarget(_ target: LaunchTarget) {
         guard target != settings.preferredTarget else { return }
         var s = settings
         s.preferredTarget = target
         try? SettingsStore().save(s)
         settings = s
-        if didStart { restartPipeline() }
+        executor?.swap(makeExecutor())
     }
 
     /// Change the notch mascot from Preferences: persist and refresh the live
@@ -164,21 +176,23 @@ final class AppController {
         updateIsland()
     }
 
-    /// Change the default working folder from Settings. Restarts the pipeline: the
-    /// executor snapshots `projectDirectory` at construction, so a live change only
-    /// takes effect after a reboot.
+    /// Change the default working folder from Settings: persist and hot-swap the
+    /// live executor in place — same reasoning as `setPreferredTarget`. The folder
+    /// only changes where a command launches, not the speech models, so no restart.
     func setProjectDirectory(_ path: String) {
         guard path != settings.projectDirectory else { return }
         var s = settings
         s.projectDirectory = path
         try? SettingsStore().save(s)
         settings = s
-        if didStart { restartPipeline() }
+        executor?.swap(makeExecutor())
     }
 
-    /// Change wake sensitivity from Settings. Restarts the pipeline: the wake engine
-    /// bakes the threshold in at construction and can't hot-swap it. Lower threshold
-    /// = more eager (more sensitive).
+    /// Change wake sensitivity from Settings. Unlike target/folder (which hot-swap
+    /// the executor), this *must* restart the pipeline: `WakeWordEngine` bakes the
+    /// threshold in at construction and can't hot-swap it — the restart cost is
+    /// unavoidable here, so don't "simplify" it to match the other two setters.
+    /// Lower threshold = more eager (more sensitive).
     func setWakeThreshold(_ threshold: Float) {
         guard threshold != settings.wakeKeywordsThreshold else { return }
         var s = settings
@@ -245,8 +259,7 @@ final class AppController {
         let registry = CommandRegistry(commands: settings.commands,
                                        defaultCommandID: settings.defaultCommandID,
                                        promptCommandID: settings.promptCommandID)
-        let executor = CommandExecutor(settings: settings,
-                                       launcherFor: { Self.launcher(for: $0) })
+        let executor = CommandExecutorHolder(makeExecutor())
         self.executor = executor
 
         do {
