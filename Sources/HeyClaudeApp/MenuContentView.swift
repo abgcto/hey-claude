@@ -7,7 +7,6 @@ import HeyClaudeKit
 /// icon does.
 struct MenuContentView: View {
     let controller: AppController
-    var onboarding: OnboardingWindowController?
     var preferences: PreferencesWindowController?
 
     private var statusLine: String {
@@ -109,17 +108,10 @@ struct MenuContentView: View {
 
         Divider()
 
-        // App-level setting (grouped with Set up / Quit). Backed by SMAppService —
-        // the toggle reads/writes the real registration each time the menu opens.
-        Toggle("Launch at Login", isOn: Binding(
-            get: { LoginItem.isEnabled },
-            set: { LoginItem.setEnabled($0) }))
-
-        Button("Set Up\u{2026}") {
-            onboarding?.show()
-        }
-
-        Button("Preferences\u{2026}") {
+        // One settings door: the dashboard owns launch-at-login, wake re-training,
+        // target/folder, and appearance — so "Set Up…" and the launch-at-login
+        // toggle are gone from the menu.
+        Button("Settings\u{2026}") {
             preferences?.show()
         }
         .keyboardShortcut(",")

@@ -13,6 +13,16 @@ import HeyClaudeKit
 final class OnboardingModel {
     enum Step { case welcome, mic, train, setup, ready }
 
+    /// `fullSetup` = first-run wizard. `retrainOnly` = just re-record the wake word
+    /// from Settings: start at training, and on completion save the new keyword and
+    /// close (no setup/ready steps, no mascot finale).
+    enum Mode { case fullSetup, retrainOnly }
+    let mode: Mode
+
+    /// Set by the retrain window layer: called when retraining ends (saved or
+    /// skipped) so the window closes and the pipeline resumes. Unused in fullSetup.
+    var onRetrainComplete: (() -> Void)?
+
     private(set) var step: Step = .welcome
     private(set) var micGranted = false
     private(set) var micDenied = false       // permission previously denied/restricted
@@ -72,12 +82,26 @@ final class OnboardingModel {
     private var attempts = 0
     private let maxAttempts = 8
 
-    init(controller: AppController) {
+    init(controller: AppController, mode: Mode = .fullSetup) {
         self.controller = controller
+        self.mode = mode
         let detected = controller.settings.preferredTarget
         self.detectedDefault = detected
         self.target = detected
         self.projectDirectory = controller.settings.projectDirectory
+    }
+
+    /// Entry point for `retrainOnly`: jump straight to training if the mic is
+    /// already authorized (the common case for an existing user), otherwise route
+    /// through the mic-grant step first.
+    func startRetrain() {
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+            micGranted = true
+            step = .train
+            beginTraining()
+        } else {
+            goToMic()
+        }
     }
 
     private var kwsDir: URL? {
@@ -222,7 +246,7 @@ final class OnboardingModel {
     private func runEnrollment() {
         enrolling = true
         statusLine = "Tuning to your voice\u{2026}"
-        guard let kwsDir else { enrolling = false; step = .setup; return }
+        guard let kwsDir else { enrolling = false; advanceAfterTraining(); return }
         let captured = samples
         let score = controller.settings.wakeKeywordsScore
         Task.detached {
@@ -242,8 +266,21 @@ final class OnboardingModel {
             await MainActor.run {
                 self.enrollResult = result
                 self.enrolling = false
-                self.step = .setup
+                if self.mode == .retrainOnly {
+                    self.controller.retrainWakeWord(keywordLines: result.keywordLines,
+                                                    threshold: result.threshold)
+                }
+                self.advanceAfterTraining()
             }
+        }
+    }
+
+    /// After enrollment: the full wizard moves on to setup; a retrain saves (above)
+    /// then signals the window to close + resume listening.
+    private func advanceAfterTraining() {
+        switch mode {
+        case .fullSetup:   step = .setup
+        case .retrainOnly: onRetrainComplete?()
         }
     }
 
@@ -301,6 +338,9 @@ final class OnboardingModel {
         recorder?.stop()
         recorder = nil
         enrollResult = nil
-        step = .setup
+        switch mode {
+        case .fullSetup:   step = .setup
+        case .retrainOnly: onRetrainComplete?()   // cancel — close + resume (nothing saved)
+        }
     }
 }

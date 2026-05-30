@@ -25,7 +25,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         }
 
         let host = NSHostingView(rootView: PreferencesView(controller: controller))
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 520),
                            styleMask: [.titled, .closable],
                            backing: .buffered, defer: false)
         win.title = "Hey Claude Settings"

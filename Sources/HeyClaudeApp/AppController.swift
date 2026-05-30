@@ -49,6 +49,11 @@ final class AppController {
     /// the listening pipeline. nil before the window layer is wired.
     var onNeedsOnboarding: (() -> Void)?
 
+    /// Set by the app layer to open wake-word re-training (onboarding in retrain
+    /// mode) from the Settings ▸ Voice tab. nil before the window layer is wired.
+    var onRetrainRequested: (() -> Void)?
+    func requestRetrain() { onRetrainRequested?() }
+
     private let machine = AppStateMachine()
     private let recentLog = RecentActions()
     private var audio: AudioCapture?
@@ -157,6 +162,53 @@ final class AppController {
         try? SettingsStore().save(s)
         settings = s
         updateIsland()
+    }
+
+    /// Change the default working folder from Settings. Restarts the pipeline: the
+    /// executor snapshots `projectDirectory` at construction, so a live change only
+    /// takes effect after a reboot.
+    func setProjectDirectory(_ path: String) {
+        guard path != settings.projectDirectory else { return }
+        var s = settings
+        s.projectDirectory = path
+        try? SettingsStore().save(s)
+        settings = s
+        if didStart { restartPipeline() }
+    }
+
+    /// Change wake sensitivity from Settings. Restarts the pipeline: the wake engine
+    /// bakes the threshold in at construction and can't hot-swap it. Lower threshold
+    /// = more eager (more sensitive).
+    func setWakeThreshold(_ threshold: Float) {
+        guard threshold != settings.wakeKeywordsThreshold else { return }
+        var s = settings
+        s.wakeKeywordsThreshold = threshold
+        try? SettingsStore().save(s)
+        settings = s
+        if didStart { restartPipeline() }
+    }
+
+    /// Re-train the wake word from Settings: persist the freshly enrolled keyword
+    /// lines + tuned threshold. A subset of `finishOnboarding` — leaves
+    /// target/folder/`onboardingCompleted` untouched. Persist ONLY; the retrain
+    /// window calls `resumeAfterRetrain()` on close, which reboots and picks this up
+    /// (so save and cancel share one restart instead of double-booting).
+    func retrainWakeWord(keywordLines: [String], threshold: Float) {
+        if !keywordLines.isEmpty { try? KeywordStore().save(lines: keywordLines) }
+        var s = settings
+        s.wakeKeywordsThreshold = threshold
+        try? SettingsStore().save(s)
+        settings = s
+    }
+
+    /// Resume listening after the retrain window closes. `RetrainWindowController`
+    /// suspended the pipeline so `EnrollmentRecorder` could own the mic; this boots
+    /// it again, picking up a freshly saved keyword (or the prior one if cancelled).
+    func resumeAfterRetrain() { restartPipeline() }
+
+    /// Marketing version (`CFBundleShortVersionString`) for the Settings About line.
+    var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "\u{2014}"
     }
 
     /// Boots the pipeline. Idempotent — safe to call from a SwiftUI `.task`.

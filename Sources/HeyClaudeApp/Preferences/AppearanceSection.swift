@@ -1,0 +1,87 @@
+import SwiftUI
+import HeyClaudeKit
+
+/// Appearance tab: the mascot picker — a live preview of the selected mascot +
+/// color, the gallery of every catalog mascot, and the curated color palette.
+/// (Moved out of the former mascot-only `PreferencesView`; selection still reads
+/// straight from `controller.settings` and routes taps to the controller setters,
+/// which persist and update the live notch island.)
+struct AppearanceSection: View {
+    let controller: AppController
+
+    /// The 8 curated body colors (design doc · "Color palette").
+    private let palette: [(name: String, hex: String)] = [
+        ("Clay", "#D87757"), ("Amber", "#E0A35E"), ("Sage", "#86A886"),
+        ("Sky", "#79A6C4"), ("Lavender", "#9E8CC9"), ("Rose", "#C98AA6"),
+        ("Slate", "#8E97A3"), ("Bone", "#EDEAE3"),
+    ]
+
+    private var selectedID: String { controller.settings.mascotID }
+    private var selectedHex: String { controller.settings.mascotColorHex }
+    private var selectedMascot: Mascot { MascotCatalog.byID(selectedID) }
+    private var bodyColor: Color { Color(hex: selectedHex) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PreferencesTheme.groupSpacing) {
+            SettingsGroup("MASCOT") { gallery }
+            SettingsGroup("COLOR") { swatchRow }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One tappable square per catalog mascot; the live selection wears a ring.
+    /// Left-aligned (no hero preview — the live notch island IS the preview).
+    private var gallery: some View {
+        let columns = [GridItem(.adaptive(minimum: 64, maximum: 64), spacing: 12, alignment: .leading)]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+            ForEach(MascotCatalog.all) { m in mascotCell(m) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func mascotCell(_ m: Mascot) -> some View {
+        let selected = m.id == selectedID
+        return Button { controller.setMascot(id: m.id) } label: {
+            MascotView(mascot: m, bodyColor: bodyColor)
+                .padding(9)
+                .frame(width: 64, height: 64)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(selected ? PreferencesTheme.ink.opacity(0.08) : .clear))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(selected ? PreferencesTheme.ink : PreferencesTheme.hairStrong,
+                                lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .help(m.displayName)
+        .accessibilityLabel(m.displayName)
+    }
+
+    /// The 8 curated swatches in one row. Sized + spaced to fit the pane width so
+    /// the row can't overflow and shove the fixed sidebar.
+    private var swatchRow: some View {
+        HStack(spacing: PreferencesTheme.listSpacing) {
+            ForEach(palette, id: \.hex) { swatch in swatchButton(swatch) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func swatchButton(_ swatch: (name: String, hex: String)) -> some View {
+        // Case-insensitive compare so a lowercased persisted value still rings.
+        let selected = swatch.hex.caseInsensitiveCompare(selectedHex) == .orderedSame
+        return Button { controller.setMascotColor(hex: swatch.hex) } label: {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(hex: swatch.hex))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(selected ? PreferencesTheme.ink : .white.opacity(0.12),
+                                lineWidth: selected ? 2.5 : 1))
+        }
+        .buttonStyle(.plain)
+        .help(swatch.name)
+        .accessibilityLabel(swatch.name)
+    }
+}
