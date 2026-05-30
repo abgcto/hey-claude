@@ -18,6 +18,7 @@ public struct Settings: Codable, Equatable, Sendable {
     public var commands: [Command]                // the voice-triggerable command registry
     public var defaultCommandID: String           // bare "hey claude"
     public var promptCommandID: String            // freeform prompt fallthrough
+    public var islandVisible: Bool                // show the notch island (3B-2)
 
     public init(projectDirectory: String = NSHomeDirectory(),
                 preferredTerminal: TerminalKind = .terminalApp,
@@ -27,7 +28,8 @@ public struct Settings: Codable, Equatable, Sendable {
                 claudeExecutable: String = "claude",
                 commands: [Command] = Command.seededDefaults,
                 defaultCommandID: String = "claude-desktop",
-                promptCommandID: String = "claude-code") {
+                promptCommandID: String = "claude-code",
+                islandVisible: Bool = true) {
         self.projectDirectory = projectDirectory
         self.preferredTerminal = preferredTerminal
         self.wakeKeywordsScore = wakeKeywordsScore
@@ -37,6 +39,7 @@ public struct Settings: Codable, Equatable, Sendable {
         self.commands = commands
         self.defaultCommandID = defaultCommandID
         self.promptCommandID = promptCommandID
+        self.islandVisible = islandVisible
     }
 
     /// Custom decoding so legacy settings JSON written before the command
@@ -56,6 +59,8 @@ public struct Settings: Codable, Equatable, Sendable {
             ?? "claude-desktop"
         self.promptCommandID = try container.decodeIfPresent(String.self, forKey: .promptCommandID)
             ?? "claude-code"
+        self.islandVisible = try container.decodeIfPresent(Bool.self, forKey: .islandVisible)
+            ?? true
     }
 
     public static let `default` = Settings()

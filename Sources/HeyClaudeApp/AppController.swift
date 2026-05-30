@@ -29,6 +29,13 @@ final class AppController {
     private var userMuted = false
     private var didStart = false
 
+    // The notch island (3B-2). Owned here; driven on every state change. `nil`
+    // when the user has hidden it (`settings.islandVisible == false`).
+    private var island: NotchIslandPanel?
+    // Held during the reveal beat: while `true` (and state is `.hot`) the island
+    // shows the finalized transcript instead of "Listening…".
+    private var revealing = false
+
     init() {
         self.settings = SettingsStore().load()
     }
@@ -37,6 +44,13 @@ final class AppController {
     func start() {
         guard !didStart else { return }
         didStart = true
+
+        // Bring up the island first so even the `.micDenied` early-out below
+        // renders correctly (it maps to `.off` → hidden, ordering the panel out).
+        if settings.islandVisible {
+            island = NotchIslandPanel()
+        }
+        updateIsland()
 
         guard let modelsDir = resolveModelsDir() else {
             emit(.micDenied)   // surfaced as `.off`: no models means nothing to run
@@ -81,7 +95,9 @@ final class AppController {
                         FileHandle.standardError.write(
                             Data("launch failed: \(error)\n".utf8))
                     }
-                    Task { @MainActor in self?.didExecute(cmd) }
+                    // `prompt` is the user's words post wake-strip — the text
+                    // the island hands back during the reveal beat.
+                    Task { @MainActor in self?.didExecute(cmd, transcript: prompt) }
                 })
             self.voice = voice
 
@@ -128,9 +144,22 @@ final class AppController {
     private func emit(_ e: AppEvent) {
         machine.apply(e)
         state = machine.state
+        updateIsland()
     }
 
-    private func didExecute(_ command: Command) {
+    /// Rebuilds the island's display config from the current state + transcript
+    /// and pushes it to the panel. Called from `emit(...)` for every state
+    /// change, and directly during the reveal beat (which is *not* a state
+    /// change — the machine holds `.hot` while `revealing` flips).
+    private func updateIsland() {
+        guard let island else { return }
+        let model = IslandModel(state: machine.state,
+                                transcript: machine.lastHeard,
+                                revealing: revealing)
+        island.update(model)
+    }
+
+    private func didExecute(_ command: Command, transcript: String?) {
         let directory: String? = {
             switch command.kind {
             case .runCLI:   return settings.projectDirectory
@@ -141,9 +170,22 @@ final class AppController {
         recentLog.record(label: command.label, directory: directory,
                          at: Date().timeIntervalSinceReferenceDate)
         recent = recentLog
-        emit(.launching)
-        // Settle shortly after launch so the icon returns to armed.
+
+        // Reveal sequence: hold the transcript on the island for ~1.2s (state
+        // stays `.hot`), then launch (`.hot → .working`, "Launching Claude"),
+        // then settle back to the resting seam. The real launch already happened
+        // on the audio queue; this is the cosmetic hand-back beat.
+        let hasTranscript = !(transcript ?? "").isEmpty
+        machine.apply(.heard(transcript ?? ""))   // records lastHeard while `.hot`
+        revealing = hasTranscript
+        updateIsland()                            // show transcript (or hold listening)
+
         Task { @MainActor in
+            if hasTranscript {
+                try? await Task.sleep(for: .milliseconds(1200))
+            }
+            self.revealing = false
+            self.emit(.launching)
             try? await Task.sleep(for: .milliseconds(900))
             self.emit(.settled)
         }
