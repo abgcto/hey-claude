@@ -6,28 +6,50 @@ public struct IslandModel: Equatable {
     public enum Shape: Equatable { case seam, expanded }
     public enum Content: Equatable { case none, listening, transcript(String), launching }
 
+    /// The single source of truth the view switches on to render the right-of-camera
+    /// content, size its right area, and pick its height. One case per approved
+    /// dynamic-island state (see internal design notes).
+    public enum Visual: Equatable {
+        case hidden                 // off — island not drawn
+        case idle                   // armed — calm dim dot
+        case listening              // hot — pulsing live dot + coral equalizer
+        case transcript(String)     // hot + revealing + text — taller band, kicker + line
+        case launching              // working — coral arrow + LAUNCHING label
+        case muted                  // mic off — slashed-mic glyph, dimmed
+        case paused                 // call-guard hold — violet pause glyph + label, dimmed
+    }
+
     public let shape: Shape
     public let content: Content
+    public let visual: Visual
     public let showsSlash: Bool   // muted
-    public let dimmed: Bool       // paused
+    public let dimmed: Bool       // paused / muted treatment
     public let hidden: Bool       // off
 
     public init(state: AppState, transcript: String?, revealing: Bool = false) {
         switch state {
         case .off:
-            shape = .seam; content = .none; showsSlash = false; dimmed = false; hidden = true
+            shape = .seam; content = .none; visual = .hidden
+            showsSlash = false; dimmed = false; hidden = true
         case .armed:
-            shape = .seam; content = .none; showsSlash = false; dimmed = false; hidden = false
+            shape = .seam; content = .none; visual = .idle
+            showsSlash = false; dimmed = false; hidden = false
         case .muted:
-            shape = .seam; content = .none; showsSlash = true; dimmed = false; hidden = false
+            shape = .seam; content = .none; visual = .muted
+            showsSlash = true; dimmed = false; hidden = false
         case .paused:
-            shape = .expanded; content = .none; showsSlash = false; dimmed = true; hidden = false
+            shape = .expanded; content = .none; visual = .paused
+            showsSlash = false; dimmed = true; hidden = false
         case .hot:
-            shape = .expanded; showsSlash = false; dimmed = false; hidden = false
-            if revealing, let t = transcript, !t.isEmpty { content = .transcript(t) }
-            else { content = .listening }
+            showsSlash = false; dimmed = false; hidden = false
+            if revealing, let t = transcript, !t.isEmpty {
+                shape = .expanded; content = .transcript(t); visual = .transcript(t)
+            } else {
+                shape = .expanded; content = .listening; visual = .listening
+            }
         case .working:
-            shape = .expanded; content = .launching; showsSlash = false; dimmed = false; hidden = false
+            shape = .expanded; content = .launching; visual = .launching
+            showsSlash = false; dimmed = false; hidden = false
         }
     }
 }
