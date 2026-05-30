@@ -116,6 +116,10 @@ final class OnboardingModel {
     }
 
     func beginTraining() {
+        // Idempotent: a grant can advance us here twice (the requestAccess
+        // completion and the window-refocus re-check can both land), so stop any
+        // in-flight recorder before starting fresh — never stack two mic taps.
+        recorder?.stop(); recorder = nil
         samples.removeAll(); capturedCount = 0; attempts = 0
         recordNext()   // notch stays the empty shell; the mascot flies home on "Done"
     }
