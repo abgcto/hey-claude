@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import HeyClaudeKit
@@ -62,7 +63,74 @@ final class AppController {
     private var revealing = false
 
     init() {
-        self.settings = SettingsStore().load()
+        var loaded = SettingsStore().load()
+        // First run only: pick a sensible default target by detection instead of
+        // a dumb hardcoded Terminal. Once onboarding is done the saved choice is
+        // sticky — never re-detect and override the user. (design §5.7)
+        if !loaded.onboardingCompleted {
+            loaded.preferredTarget = Self.smartDefaultTarget()
+        }
+        self.settings = loaded
+    }
+
+    /// Detect the default target for a fresh install: if exactly one editor is
+    /// installed, has the Claude Code extension, and is actively in use
+    /// (lockfile or running), default to it; otherwise Terminal. (design §5.7)
+    static func smartDefaultTarget() -> LaunchTarget {
+        let integration = EditorIntegration.claudeCode
+        let candidates = EditorAvailability().readyEditors(integration: integration)
+        guard !candidates.isEmpty else { return .terminal(.terminalApp) }
+
+        var active = DefaultTargetResolver.activeEditors(
+            fromIdeNames: IdeLockfileReader().activeIdeNames(), among: candidates)
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+        active.formUnion(candidates.filter { running.contains($0.bundleID) })
+
+        return DefaultTargetResolver.resolve(candidates: candidates, active: active)
+    }
+
+    /// The concrete launcher for a terminal kind. Single source of truth so the
+    /// executor and the availability filter agree. `nonisolated` because the
+    /// executor's `launcherFor` closure runs on the audio queue (never main).
+    nonisolated static func launcher(for kind: TerminalKind) -> TerminalLauncher {
+        switch kind {
+        case .terminalApp: return TerminalAppLauncher()
+        case .iterm2:      return ITerm2Launcher()
+        case .ghostty:     return GhosttyLauncher()
+        }
+    }
+
+    /// Installed terminal apps (Terminal is always present; iTerm2/Ghostty only
+    /// if their bundle is found) — so we never offer one the user can't launch.
+    var availableTerminals: [TerminalKind] {
+        TerminalKind.allCases.filter { Self.launcher(for: $0).isAvailable() }
+    }
+
+    /// Targets the user can pick in the menu: installed terminals, plus any
+    /// editor that is installed and Claude-Code-ready.
+    var availableTargets: [LaunchTarget] {
+        let editors = EditorAvailability().readyEditors(integration: .claudeCode)
+        return availableTerminals.map { .terminal($0) }
+            + EditorKind.allCases.filter { editors.contains($0) }.map { .editor($0) }
+    }
+
+    /// Editors installed but not yet usable (Claude Code extension missing).
+    /// Surfaced disabled in the picker so users see they're an option once the
+    /// extension is added, rather than wondering why they're absent.
+    var unavailableEditors: [EditorKind] {
+        let missing = EditorAvailability().installedMissingExtension(integration: .claudeCode)
+        return EditorKind.allCases.filter { missing.contains($0) }
+    }
+
+    /// Change the default target from the menu: persist and reboot the pipeline
+    /// so the live executor picks up the new setting.
+    func setPreferredTarget(_ target: LaunchTarget) {
+        guard target != settings.preferredTarget else { return }
+        var s = settings
+        s.preferredTarget = target
+        try? SettingsStore().save(s)
+        settings = s
+        if didStart { restartPipeline() }
     }
 
     /// Boots the pipeline. Idempotent — safe to call from a SwiftUI `.task`.
@@ -100,13 +168,7 @@ final class AppController {
                                        defaultCommandID: settings.defaultCommandID,
                                        promptCommandID: settings.promptCommandID)
         let executor = CommandExecutor(settings: settings,
-                                       launcherFor: { kind in
-                                           switch kind {
-                                           case .terminalApp: return TerminalAppLauncher()
-                                           case .iterm2:      return ITerm2Launcher()
-                                           case .ghostty:     return GhosttyLauncher()
-                                           }
-                                       })
+                                       launcherFor: { Self.launcher(for: $0) })
         self.executor = executor
 
         do {
@@ -189,11 +251,11 @@ final class AppController {
     /// + chosen terminal/folder, mark done, and boot the listening pipeline (which
     /// then picks up the per-user keyword via `start()`'s resolution).
     func finishOnboarding(keywordLines: [String], threshold: Float,
-                          terminal: TerminalKind, projectDirectory: String) {
+                          target: LaunchTarget, projectDirectory: String) {
         if !keywordLines.isEmpty { try? KeywordStore().save(lines: keywordLines) }
         var s = settings
         s.wakeKeywordsThreshold = threshold
-        s.preferredTerminal = terminal
+        s.preferredTarget = target
         s.projectDirectory = projectDirectory
         s.onboardingCompleted = true
         try? SettingsStore().save(s)
@@ -271,7 +333,11 @@ final class AppController {
     private func didExecute(_ command: Command, transcript: String?) {
         let directory: String? = {
             switch command.kind {
-            case .runCLI:   return settings.projectDirectory
+            case .runCLI:
+                // Editor targets open in the editor's focused window, not a fixed
+                // folder — so don't claim a directory for them.
+                if case .editor = command.target ?? settings.preferredTarget { return nil }
+                return settings.projectDirectory
             case .openApp:  return nil
             case .runShell: return nil
             }

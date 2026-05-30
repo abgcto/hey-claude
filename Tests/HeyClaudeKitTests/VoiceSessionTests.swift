@@ -4,7 +4,7 @@ import XCTest
 final class VoiceSessionTests: XCTestCase {
     private func registry() -> CommandRegistry {
         CommandRegistry(commands: Command.seededDefaults,
-                        defaultCommandID: "claude-desktop",
+                        defaultCommandID: "claude-code",
                         promptCommandID: "claude-code")
     }
 
@@ -35,7 +35,8 @@ final class VoiceSessionTests: XCTestCase {
         XCTAssertEqual(executed.value.first?.1, "refactor the auth module")
     }
 
-    func test_bareWake_resolvesDefaultDesktop_noPrompt() {
+    func test_bareWake_resolvesClaudeCode_noPrompt() {
+        // Claude-Code-only: bare "hey claude" opens Claude Code with no prompt.
         let executed = Box<[(Command, String?)]>([])
         let session = VoiceSession(
             transcribe: { _ in "hey claude" },
@@ -44,7 +45,7 @@ final class VoiceSessionTests: XCTestCase {
             registry: registry(),
             execute: { executed.value.append(($0, $1)) })
         session.handle(utterance: [0.1])
-        XCTAssertEqual(executed.value.first?.0.id, "claude-desktop")
+        XCTAssertEqual(executed.value.first?.0.id, "claude-code")
         XCTAssertNil(executed.value.first?.1)
     }
 

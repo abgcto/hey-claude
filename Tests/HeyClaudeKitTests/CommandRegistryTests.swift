@@ -4,13 +4,14 @@ import XCTest
 final class CommandRegistryTests: XCTestCase {
     private func registry() -> CommandRegistry {
         CommandRegistry(commands: Command.seededDefaults,
-                        defaultCommandID: "claude-desktop",
+                        defaultCommandID: "claude-code",
                         promptCommandID: "claude-code")
     }
 
     func test_silence_resolvesDefault_noPrompt() {
+        // Claude-Code-only: bare "hey claude" opens Claude Code (no prompt).
         let r = registry().resolve(transcript: nil)
-        XCTAssertEqual(r?.command.id, "claude-desktop")
+        XCTAssertEqual(r?.command.id, "claude-code")
         XCTAssertNil(r?.prompt)
     }
     func test_triggerWord_resolvesThatCommand() {

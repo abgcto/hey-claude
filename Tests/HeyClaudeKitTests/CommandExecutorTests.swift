@@ -41,4 +41,33 @@ final class CommandExecutorTests: XCTestCase {
             .execute(Command(id: "s", label: "Sh", triggers: ["t"], kind: .runShell(script: "npm test")), prompt: nil)
         XCTAssertEqual(ran.value, "npm test")
     }
+
+    func test_runCLI_editorTarget_opensDeepLinkInsteadOfTerminal() throws {
+        let mock = MockLauncher()
+        let opened = Box<URL?>(nil)
+        let executor = CommandExecutor(settings: .default, launcherFor: { _ in mock },
+                                       openURL: { opened.value = $0 })
+        let cmd = Command(id: "claude-code", label: "Claude Code", triggers: ["code"],
+                          kind: .runCLI(commandTemplate: "claude {prompt}"),
+                          target: .editor(.cursor), acceptsPrompt: true,
+                          editorIntegration: .claudeCode)
+        try executor.execute(cmd, prompt: "fix the bug")
+        XCTAssertTrue(mock.launched.isEmpty)   // no terminal launched
+        XCTAssertEqual(opened.value?.absoluteString,
+                       "cursor://anthropic.claude-code/open?prompt=fix%20the%20bug")
+    }
+
+    func test_runCLI_editorTarget_missingIntegration_fallsBackToTerminal() throws {
+        let mock = MockLauncher()
+        let opened = Box<URL?>(nil)
+        let executor = CommandExecutor(settings: .default, launcherFor: { _ in mock },
+                                       openURL: { opened.value = $0 })
+        let cmd = Command(id: "x", label: "X", triggers: ["x"],
+                          kind: .runCLI(commandTemplate: "claude {prompt}"),
+                          target: .editor(.cursor), acceptsPrompt: true,
+                          editorIntegration: nil)   // no editor integration
+        try executor.execute(cmd, prompt: "hi")
+        XCTAssertNil(opened.value)                 // no deep link
+        XCTAssertEqual(mock.launched.count, 1)     // terminal fallback used
+    }
 }

@@ -38,7 +38,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         model.onDone = { [weak self] in self?.runFinale() }
         let host = NSHostingView(rootView: OnboardingView(model: model,
                                                           onClose: { [weak self] in self?.close() }))
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 450),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 520),
                            styleMask: [.titled, .closable, .fullSizeContentView],
                            backing: .buffered, defer: false)
         win.titlebarAppearsTransparent = true

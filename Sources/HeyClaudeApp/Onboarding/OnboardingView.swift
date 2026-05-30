@@ -9,6 +9,10 @@ struct OnboardingView: View {
     @Bindable var model: OnboardingModel
     let onClose: () -> Void
 
+    /// A disabled editor the user tapped to see *why* it's unavailable. Drives the
+    /// name/subtitle area without changing the actual launch target. nil = normal.
+    @State private var inspected: EditorKind?
+
     // Palette (pure black per spec; off-white ink).
     private let ink = Color(red: 0.953, green: 0.949, blue: 0.937)   // #f3f2ef
     private let inkSoft = Color(red: 0.612, green: 0.596, blue: 0.561)
@@ -43,7 +47,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 60)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 600, height: 450)
+        .frame(width: 600, height: 520)
         .foregroundStyle(ink)
         .animation(.easeInOut(duration: 0.28), value: model.step)
     }
@@ -121,7 +125,7 @@ struct OnboardingView: View {
             }
             .opacity(model.enrolling ? 0 : 1)
             if !model.enrolling {
-                Button("Skip for now") { model.skip(); onClose() }
+                Button("Skip for now") { model.skipTraining() }
                     .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkFaint)
                     .padding(.top, 18)
             }
@@ -141,20 +145,9 @@ struct OnboardingView: View {
     private var setup: some View {
         VStack(alignment: .leading, spacing: 28) {
             Spacer()
-            field("TERMINAL") {
-                HStack(spacing: 0) {
-                    ForEach(TerminalKind.allCases, id: \.self) { t in
-                        Button { model.terminal = t } label: {
-                            Text(t.rawValue).font(gs(13.5, .medium))
-                                .foregroundStyle(model.terminal == t ? ink : inkSoft)
-                                .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                .background(model.terminal == t ? Color.white.opacity(0.08) : .clear)
-                        }.buttonStyle(.plain)
-                    }
-                }
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(hairStrong, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 9))
-            }
+            // Icon-switcher selector for where Claude Code opens.
+            field("CLAUDE CODE OPENS IN") { targetPicker }
+                .padding(.bottom, 18)   // extra air before the folder chooser
             field("PROJECT FOLDER") {
                 HStack(spacing: 11) {
                     Text(model.projectDirectory).font(gs(14)).lineLimit(1).truncationMode(.head)
@@ -202,6 +195,103 @@ struct OnboardingView: View {
                 .background(RoundedRectangle(cornerRadius: 9).fill(ink))
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Target picker (icon switcher: app-icon row, selected grows)
+
+    private var targetPicker: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                ForEach(Array(model.availableTargets.enumerated()), id: \.offset) { _, t in
+                    iconButton(t)
+                }
+                ForEach(Array(model.unavailableEditors.enumerated()), id: \.offset) { _, e in
+                    disabledIcon(e)
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: model.target)
+            .animation(.easeOut(duration: 0.18), value: inspected)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(inspected?.rawValue ?? model.target.label)
+                        .font(gs(18, .semibold)).tracking(-0.2)
+                        .foregroundStyle(inspected == nil ? ink : inkSoft)
+                    if inspected == nil, model.showsDetectedBadge {
+                        Text("DETECTED").font(gs(9, .semibold)).tracking(1.4).foregroundStyle(.black)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(ink))
+                    }
+                }
+                Text(inspected == nil ? selectedSubtitle
+                                      : "Needs the Claude Code extension to use it.")
+                    .font(gs(12.5)).foregroundStyle(inspected == nil ? inkSoft : inkFaint)
+            }
+        }
+    }
+
+    /// One selectable app icon. The selected one sits in a soft rounded well and
+    /// grows slightly (dock / Launchpad-style emphasis).
+    private func iconButton(_ t: LaunchTarget) -> some View {
+        let selected = inspected == nil && model.target == t
+        return Button { model.selectTarget(t); inspected = nil } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14).fill(selected ? ink.opacity(0.08) : .clear)
+                appIcon(t, size: selected ? 50 : 42)
+            }
+            .frame(width: 66, height: 66)
+        }
+        .buttonStyle(.plain)
+        .help(t.label)
+    }
+
+    /// An installed editor that can't be used yet. The real icon with a warning
+    /// badge on its top-right corner. Clickable: tapping it shows the reason in
+    /// the text area; a dashed well marks it as "viewing".
+    private func disabledIcon(_ e: EditorKind) -> some View {
+        let viewing = inspected == e
+        return Button { inspected = viewing ? nil : e } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(hairStrong, style: StrokeStyle(lineWidth: 1, dash: [3]))
+                    .opacity(viewing ? 1 : 0)
+                appIcon(.editor(e), size: 42)
+                    .opacity(viewing ? 1 : 0.6)
+                    .overlay(alignment: .topTrailing) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color(white: 0.42))
+                                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .stroke(.black, lineWidth: 1.5))
+                            Image(systemName: "exclamationmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Color(white: 0.95))
+                        }
+                        .frame(width: 16, height: 16)
+                        .offset(x: 6, y: -6)
+                    }
+            }
+            .frame(width: 66, height: 66)
+        }
+        .buttonStyle(.plain)
+        .help("\(e.rawValue) — needs the Claude Code extension")
+    }
+
+    @ViewBuilder
+    private func appIcon(_ t: LaunchTarget, size: CGFloat) -> some View {
+        if let icon = model.appIcon(for: t) {
+            Image(nsImage: icon).resizable().interpolation(.high).frame(width: size, height: size)
+        } else {
+            RoundedRectangle(cornerRadius: size * 0.22).fill(ink.opacity(0.08))
+                .frame(width: size, height: size)
+        }
+    }
+
+    private var selectedSubtitle: String {
+        switch model.target {
+        case .terminal: return "Opens a fresh session in your project folder."
+        case .editor:   return "Edits land right inside the editor."
+        }
     }
 }
 

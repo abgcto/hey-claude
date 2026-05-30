@@ -18,22 +18,58 @@ public struct Command: Codable, Equatable, Identifiable, Sendable {
     public var label: String              // human label ("Claude Code")
     public var triggers: [String]         // spoken phrases that select it (lowercased). [] = eligible only as a default.
     public var kind: CommandKind
-    public var terminal: TerminalKind?    // for runCLI; nil → settings.preferredTerminal
+    public var target: LaunchTarget?      // terminal or editor; nil → settings default
     public var acceptsPrompt: Bool        // whether trailing speech is passed as {prompt}
 
+    /// How this command's tool integrates with an editor (deep-link host/path/
+    /// param + extension glob). `nil` → terminal-only: editor targets are not
+    /// offered for it. Carries Claude Code's values for the seeded command; a
+    /// future "codex" command carries Codex's. See design §5.8.
+    public var editorIntegration: EditorIntegration?
+
     public init(id: String, label: String, triggers: [String], kind: CommandKind,
-                terminal: TerminalKind? = nil, acceptsPrompt: Bool = false) {
+                target: LaunchTarget? = nil, acceptsPrompt: Bool = false,
+                editorIntegration: EditorIntegration? = nil) {
         self.id = id; self.label = label
         self.triggers = triggers.map { $0.lowercased() }
-        self.kind = kind; self.terminal = terminal; self.acceptsPrompt = acceptsPrompt
+        self.kind = kind; self.target = target; self.acceptsPrompt = acceptsPrompt
+        self.editorIntegration = editorIntegration
     }
 
-    /// The seeded out-of-box command set: bare "Hey Claude" → desktop app,
-    /// "Hey Claude Code"/prompts → Claude Code.
+    private enum CodingKeys: String, CodingKey {
+        case id, label, triggers, kind, target, acceptsPrompt, editorIntegration
+    }
+    /// Pre-`LaunchTarget` settings stored the launch destination as a bare
+    /// `TerminalKind` under `terminal`. Decoded into `target` for migration.
+    private enum LegacyKeys: String, CodingKey { case terminal }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.label = try c.decode(String.self, forKey: .label)
+        self.triggers = (try c.decodeIfPresent([String].self, forKey: .triggers) ?? [])
+            .map { $0.lowercased() }
+        self.kind = try c.decode(CommandKind.self, forKey: .kind)
+        self.acceptsPrompt = try c.decodeIfPresent(Bool.self, forKey: .acceptsPrompt) ?? false
+        self.editorIntegration = try c.decodeIfPresent(EditorIntegration.self, forKey: .editorIntegration)
+
+        if let t = try c.decodeIfPresent(LaunchTarget.self, forKey: .target) {
+            self.target = t
+        } else if let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
+            .decodeIfPresent(TerminalKind.self, forKey: .terminal) {
+            self.target = .terminal(legacy)   // migrate old `terminal` → `target`
+        } else {
+            self.target = nil
+        }
+    }
+
+    /// The seeded out-of-box command set: bare "Hey Claude" and any prompt go to
+    /// Claude Code. (The legacy "open Claude desktop chat app" command was
+    /// removed — the app is now purely a Claude Code launcher. See design §5.6.)
     public static let seededDefaults: [Command] = [
-        Command(id: "claude-desktop", label: "Claude desktop", triggers: [],
-                kind: .openApp(bundleID: "com.anthropic.claudefordesktop")),
         Command(id: "claude-code", label: "Claude Code", triggers: ["code"],
-                kind: .runCLI(commandTemplate: "claude {prompt}"), acceptsPrompt: true),
+                kind: .runCLI(commandTemplate: "claude {prompt}"),
+                acceptsPrompt: true,
+                editorIntegration: .claudeCode),
     ]
 }

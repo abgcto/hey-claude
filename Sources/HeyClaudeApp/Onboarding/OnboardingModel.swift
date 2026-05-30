@@ -25,8 +25,42 @@ final class OnboardingModel {
     private(set) var enrolling = false
     private(set) var enrollResult: WakeEnrollment.Result?
 
-    var terminal: TerminalKind
+    /// Where Claude Code opens. Seeded from the smart default (the editor in use
+    /// if detected, else Terminal); the setup step pre-selects it but lets the
+    /// user choose any available target.
+    var target: LaunchTarget
     var projectDirectory: String
+
+    /// The auto-detected default captured at setup start — used to show the
+    /// "Detected" badge only while the selection is still the smart pick.
+    let detectedDefault: LaunchTarget
+
+    /// Every target the user can choose at setup: installed terminals + ready
+    /// editors. The detected default (`target`) is pre-selected among them.
+    var availableTargets: [LaunchTarget] { controller.availableTargets }
+
+    /// Editors installed but missing the Claude Code extension — listed disabled.
+    var unavailableEditors: [EditorKind] { controller.unavailableEditors }
+
+    /// Choose a target in the setup step.
+    func selectTarget(_ t: LaunchTarget) { target = t }
+
+    /// The real macOS app icon for a target, cached. nil if the app isn't found.
+    @ObservationIgnored private var iconCache: [String: NSImage] = [:]
+    func appIcon(for t: LaunchTarget) -> NSImage? {
+        let id = t.bundleID
+        if let cached = iconCache[id] { return cached }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return nil }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        iconCache[id] = icon
+        return icon
+    }
+
+    /// Show "Detected" only when the current pick is the auto-found editor.
+    var showsDetectedBadge: Bool {
+        guard target == detectedDefault, case .editor = target else { return false }
+        return true
+    }
 
     /// Set by the window layer: runs the finale (close the window at once, fly the
     /// mascot home, then commit on landing). nil → commit immediately.
@@ -40,7 +74,9 @@ final class OnboardingModel {
 
     init(controller: AppController) {
         self.controller = controller
-        self.terminal = controller.settings.preferredTerminal
+        let detected = controller.settings.preferredTarget
+        self.detectedDefault = detected
+        self.target = detected
         self.projectDirectory = controller.settings.projectDirectory
     }
 
@@ -246,7 +282,7 @@ final class OnboardingModel {
         controller.finishOnboarding(
             keywordLines: enrollResult?.keywordLines ?? [],
             threshold: enrollResult?.threshold ?? controller.settings.wakeKeywordsThreshold,
-            terminal: terminal,
+            target: target,
             projectDirectory: projectDirectory)
     }
 
@@ -256,5 +292,15 @@ final class OnboardingModel {
         recorder?.stop()
         recorder = nil
         controller.completeOnboarding()
+    }
+
+    /// Skip only the voice training and continue to setup. Enrollment is left
+    /// empty, so finishing falls back to the bundled wake word — but the user
+    /// still gets to choose where Claude Code opens + the project folder.
+    func skipTraining() {
+        recorder?.stop()
+        recorder = nil
+        enrollResult = nil
+        step = .setup
     }
 }

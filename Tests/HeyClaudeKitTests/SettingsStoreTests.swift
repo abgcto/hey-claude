@@ -18,23 +18,50 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(fileURL: url)
         var s = Settings.default
         s.projectDirectory = "/tmp/proj"
-        s.preferredTerminal = .iterm2
+        s.preferredTarget = .editor(.cursor)
         s.cooldownSeconds = 3.5
         try store.save(s)
         XCTAssertEqual(store.load(), s)
     }
 
-    func test_defaultSettings_seedChatVsCode() {
+    func test_defaultSettings_areClaudeCodeOnly() {
         let s = Settings.default
-        XCTAssertEqual(s.defaultCommandID, "claude-desktop")   // "hey claude" → desktop
-        XCTAssertEqual(s.promptCommandID, "claude-code")        // prompts → code
+        XCTAssertEqual(s.defaultCommandID, "claude-code")   // bare "hey claude" → code
+        XCTAssertEqual(s.promptCommandID, "claude-code")     // prompts → code
+        XCTAssertEqual(s.preferredTarget, .terminal(.terminalApp))
         XCTAssertTrue(s.commands.contains { $0.id == "claude-code" })
     }
 
     func test_decodingLegacyBlob_missingCommands_fallsBackToSeeded() throws {
         let legacy = #"{"projectDirectory":"/tmp","preferredTerminal":"iTerm2","wakeKeywordsScore":2,"wakeKeywordsThreshold":0.25,"cooldownSeconds":2,"claudeExecutable":"claude"}"#
         let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
-        XCTAssertFalse(s.commands.isEmpty)        // seeded, not empty
-        XCTAssertEqual(s.defaultCommandID, "claude-desktop")
+        XCTAssertFalse(s.commands.isEmpty)                       // seeded, not empty
+        XCTAssertEqual(s.defaultCommandID, "claude-code")        // migrated
+        XCTAssertEqual(s.preferredTarget, .terminal(.iterm2))    // preferredTerminal → preferredTarget
+    }
+
+    func test_decodingLegacyBlob_dropsClaudeDesktopRouting() throws {
+        // A settings file from before Claude-Code-only: bare wake → desktop app.
+        let legacy = """
+        {"projectDirectory":"/tmp","preferredTerminal":"Terminal","wakeKeywordsScore":2,\
+        "wakeKeywordsThreshold":0.25,"cooldownSeconds":2,"claudeExecutable":"claude",\
+        "defaultCommandID":"claude-desktop","promptCommandID":"claude-code",\
+        "commands":[\
+        {"id":"claude-desktop","label":"Claude desktop","triggers":[],"kind":{"openApp":{"bundleID":"com.anthropic.claudefordesktop"}},"acceptsPrompt":false},\
+        {"id":"claude-code","label":"Claude Code","triggers":["code"],"kind":{"runCLI":{"commandTemplate":"claude {prompt}"}},"acceptsPrompt":true}\
+        ]}
+        """
+        let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
+        XCTAssertEqual(s.defaultCommandID, "claude-code")               // remapped
+        XCTAssertFalse(s.commands.contains { $0.id == "claude-desktop" }) // dropped
+        XCTAssertTrue(s.commands.contains { $0.id == "claude-code" })
+    }
+
+    func test_decodingLegacyBlob_backfillsEditorIntegration() throws {
+        // claude-code persisted before `editorIntegration` existed → must be
+        // backfilled, else an editor target silently falls back to a terminal.
+        let legacy = #"{"projectDirectory":"/tmp","preferredTarget":{"type":"editor","value":"Cursor"},"wakeKeywordsScore":2,"wakeKeywordsThreshold":0.25,"cooldownSeconds":2,"claudeExecutable":"claude","defaultCommandID":"claude-code","promptCommandID":"claude-code","commands":[{"acceptsPrompt":true,"id":"claude-code","kind":{"runCLI":{"commandTemplate":"claude {prompt}"}},"label":"Claude Code","triggers":["code"]}]}"#
+        let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
+        XCTAssertEqual(s.commands.first { $0.id == "claude-code" }?.editorIntegration, .claudeCode)
     }
 }

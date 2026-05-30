@@ -23,11 +23,25 @@ struct MenuContentView: View {
     var body: some View {
         Text(statusLine)
             .font(.system(size: 12, weight: .medium))
-        Text("\(controller.settings.preferredTerminal.rawValue) · \(controller.settings.projectDirectory)")
+        Text("\(controller.settings.preferredTarget.label) · \(controller.settings.projectDirectory)")
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
 
         Divider()
+
+        Menu("Open Claude Code in\u{2026}") {
+            ForEach(Array(controller.availableTargets.enumerated()), id: \.offset) { _, target in
+                Button {
+                    controller.setPreferredTarget(target)
+                } label: {
+                    if target == controller.settings.preferredTarget {
+                        Label(target.label, systemImage: "checkmark")
+                    } else {
+                        Text(target.label)
+                    }
+                }
+            }
+        }
 
         Button(controller.state == .muted ? "Resume Hey Claude" : "Mute Hey Claude") {
             controller.toggleMute()

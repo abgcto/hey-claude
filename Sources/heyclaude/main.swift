@@ -103,5 +103,5 @@ if !resolvesExecutable(settings.claudeExecutable) {
 }
 
 print("Hey Claude is listening. Say \"hey claude\" … (Ctrl-C to quit)")
-print("  terminal: \(settings.preferredTerminal.rawValue)   project: \(settings.projectDirectory)")
+print("  target: \(settings.preferredTarget.label)   project: \(settings.projectDirectory)")
 RunLoop.main.run()
