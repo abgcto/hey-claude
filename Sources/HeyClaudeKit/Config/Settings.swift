@@ -34,6 +34,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var defaultCommandID: String           // bare "hey claude"
     public var promptCommandID: String            // freeform prompt fallthrough
     public var onboardingCompleted: Bool          // first-run wake enrollment + setup done
+    public var mascotID: String                    // selected mascot (MascotCatalog id)
+    public var mascotColorHex: String              // mascot body color, e.g. "#D87757"
 
     public init(projectDirectory: String = NSHomeDirectory(),
                 preferredTarget: LaunchTarget = .terminal(.terminalApp),
@@ -46,7 +48,9 @@ public struct Settings: Codable, Equatable, Sendable {
                 commands: [Command] = Command.seededDefaults,
                 defaultCommandID: String = "claude-code",
                 promptCommandID: String = "claude-code",
-                onboardingCompleted: Bool = false) {
+                onboardingCompleted: Bool = false,
+                mascotID: String = "classic",
+                mascotColorHex: String = "#D87757") {
         self.projectDirectory = projectDirectory
         self.preferredTarget = preferredTarget
         self.wakeKeywordsScore = wakeKeywordsScore
@@ -59,6 +63,8 @@ public struct Settings: Codable, Equatable, Sendable {
         self.defaultCommandID = defaultCommandID
         self.promptCommandID = promptCommandID
         self.onboardingCompleted = onboardingCompleted
+        self.mascotID = mascotID
+        self.mascotColorHex = mascotColorHex
     }
 
     /// Pre-`LaunchTarget` settings stored the default destination as a bare
@@ -116,6 +122,10 @@ public struct Settings: Codable, Equatable, Sendable {
         // is always present now.)
         self.onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted)
             ?? false
+        self.mascotID = try container.decodeIfPresent(String.self, forKey: .mascotID)
+            ?? "classic"
+        self.mascotColorHex = try container.decodeIfPresent(String.self, forKey: .mascotColorHex)
+            ?? "#D87757"
     }
 
     public static let `default` = Settings()

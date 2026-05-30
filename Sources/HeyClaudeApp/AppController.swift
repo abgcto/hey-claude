@@ -138,6 +138,27 @@ final class AppController {
         if didStart { restartPipeline() }
     }
 
+    /// Change the notch mascot from Preferences: persist and refresh the live
+    /// island so it re-renders immediately. Purely cosmetic — never reboots the
+    /// audio pipeline (that would drop the mic for a visual change).
+    func setMascot(id: String) {
+        var s = settings
+        s.mascotID = id
+        try? SettingsStore().save(s)
+        settings = s
+        updateIsland()
+    }
+
+    /// Change the mascot body color from Preferences: persist and refresh the
+    /// live island. Cosmetic only — no pipeline restart (see `setMascot`).
+    func setMascotColor(hex: String) {
+        var s = settings
+        s.mascotColorHex = hex
+        try? SettingsStore().save(s)
+        settings = s
+        updateIsland()
+    }
+
     /// Boots the pipeline. Idempotent — safe to call from a SwiftUI `.task`.
     func start() {
         guard !didStart else { return }
@@ -336,7 +357,14 @@ final class AppController {
                                 transcript: machine.lastHeard,
                                 revealing: revealing,
                                 failureMessage: machine.state == .failed ? lastFailure?.islandMessage : nil)
-        island.update(model)
+        // Resolve the user-selected mascot here (the single resolution point) so
+        // the live notch always reflects the current `Settings`. The body color
+        // stays a hex string across the app/Kit boundary; the panel (SwiftUI
+        // layer) converts it to `Color` so AppController needn't import SwiftUI
+        // (whose `Settings` scene type collides with our `Settings`).
+        island.update(model,
+                      mascot: MascotCatalog.byID(settings.mascotID),
+                      mascotColorHex: settings.mascotColorHex)
     }
 
     /// Hand-back beat after a launch attempt. The real launch already ran on the

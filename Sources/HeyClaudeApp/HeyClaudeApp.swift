@@ -34,6 +34,7 @@ enum HeyClaudeMain {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = AppController()
     private var onboarding: OnboardingWindowController?
+    private var preferences: PreferencesWindowController?
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -41,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ob = OnboardingWindowController(controller: controller)
         onboarding = ob
         controller.onNeedsOnboarding = { [weak ob] in ob?.show() }
+
+        // Preferences (mascot customization) owns its own window, opened from the menu.
+        let prefs = PreferencesWindowController(controller: controller)
+        preferences = prefs
 
         // The status item, created FIRST with only its image. The image is plain
         // button content (like a title) and places fine synchronously.
@@ -61,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // AND the pipeline start behind confirmed placement.
         whenStatusItemPlaced(item) { [weak self] in
             guard let self, let item = self.statusItem else { return }
-            item.menu = NSHostingMenu(rootView: MenuContentView(controller: self.controller, onboarding: ob))
+            item.menu = NSHostingMenu(rootView: MenuContentView(controller: self.controller, onboarding: ob, preferences: prefs))
             self.controller.start()
             self.observeState()
         }

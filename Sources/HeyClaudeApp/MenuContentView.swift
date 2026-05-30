@@ -8,6 +8,7 @@ import HeyClaudeKit
 struct MenuContentView: View {
     let controller: AppController
     var onboarding: OnboardingWindowController?
+    var preferences: PreferencesWindowController?
 
     private var statusLine: String {
         switch controller.state {
@@ -86,7 +87,7 @@ struct MenuContentView: View {
         }
         .pickerStyle(.menu)
 
-        Button(controller.state == .muted ? "Resume Hey Claude" : "Mute Hey Claude") {
+        Button(controller.state == .muted ? "Resume" : "Mute") {
             controller.toggleMute()
         }
 
@@ -110,15 +111,20 @@ struct MenuContentView: View {
 
         // App-level setting (grouped with Set up / Quit). Backed by SMAppService —
         // the toggle reads/writes the real registration each time the menu opens.
-        Toggle("Launch at login", isOn: Binding(
+        Toggle("Launch at Login", isOn: Binding(
             get: { LoginItem.isEnabled },
             set: { LoginItem.setEnabled($0) }))
 
-        Button("Set up Hey Claude\u{2026}") {
+        Button("Set Up\u{2026}") {
             onboarding?.show()
         }
 
-        Button("Quit Hey Claude") {
+        Button("Preferences\u{2026}") {
+            preferences?.show()
+        }
+        .keyboardShortcut(",")
+
+        Button("Quit") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")

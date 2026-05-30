@@ -72,7 +72,7 @@ struct OnboardingView: View {
     private var welcome: some View {
         scaffold {
             VStack(spacing: 0) {
-                MascotView().frame(width: 66, height: 41)
+                MascotView(mascot: MascotCatalog.byID("classic")).frame(width: 66, height: 41)
                 Text("Hey Claude").font(gs(28, .medium)).tracking(-0.6).padding(.top, 24)
                 Text("Talk to launch Claude Code.").font(gs(14)).foregroundStyle(inkSoft).padding(.top, 11)
             }
@@ -206,7 +206,7 @@ struct OnboardingView: View {
     private var ready: some View {
         scaffold {
             VStack(spacing: 0) {
-                MascotView().frame(width: 66, height: 41)
+                MascotView(mascot: MascotCatalog.byID("classic")).frame(width: 66, height: 41)
                     .opacity(model.flying ? 0 : 1)   // hand off to the flying mascot
                 Text("You\u{2019}re all set").font(gs(28, .medium)).tracking(-0.4).padding(.top, 22)
                 Text("Say \u{201C}Hey Claude\u{201D} anytime to launch Claude Code.")

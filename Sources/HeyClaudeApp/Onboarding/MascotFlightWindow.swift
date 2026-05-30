@@ -60,7 +60,7 @@ private struct FlightView: View {
     private var ctrlY: CGFloat { end.y + (start.y - end.y) * 0.30 }
 
     var body: some View {
-        MascotView()
+        MascotView(mascot: MascotCatalog.byID("classic"))
             .keyframeAnimator(initialValue: F(x: start.x, y: start.y, w: fromWidth),
                               trigger: go) { content, v in
                 content.frame(width: v.w, height: v.w * 0.625).position(x: v.x, y: v.y)

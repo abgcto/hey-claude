@@ -23,6 +23,11 @@ struct IslandView: View {
     /// its FIRST update each launch, so the island makes an entrance every time the
     /// app opens, but never re-blooms on ordinary state changes.
     var bloom: Bool = false
+    /// The user-selected mascot + body color (resolved upstream from `Settings`).
+    /// Default to Classic + clay so the notch matches a fresh install until the
+    /// user picks otherwise.
+    var mascot: Mascot = MascotCatalog.byID("classic")
+    var mascotColor: Color = Color(red: 0.847, green: 0.463, blue: 0.341)  // #D87757 clay
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Drives the bloom-in entrance.
@@ -197,7 +202,7 @@ struct IslandView: View {
         HStack(spacing: 0) {
             // Left of the camera: the mascot sits CLOSE to the notch (small inner
             // gap), leaving more padding on the outer side — not dead-centered.
-            MascotView()
+            MascotView(mascot: mascot, bodyColor: mascotColor)
                 .frame(width: 16, height: 10)
                 .offset(y: mascotBob)
                 .animation(mascotBobAnimation, value: mascotBobActive)

@@ -57,6 +57,28 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(s.commands.contains { $0.id == "claude-code" })
     }
 
+    func test_saveThenLoad_roundTripsMascotFields() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SettingsStore(fileURL: url)
+        var s = Settings.default
+        s.mascotID = "birthday"
+        s.mascotColorHex = "#86A886"
+        try store.save(s)
+        let loaded = store.load()
+        XCTAssertEqual(loaded.mascotID, "birthday")
+        XCTAssertEqual(loaded.mascotColorHex, "#86A886")
+        XCTAssertEqual(loaded, s)
+    }
+
+    func test_decodingBlob_withoutMascotKeys_yieldsDefaults() throws {
+        // A settings file from before mascot customization existed.
+        let legacy = #"{"projectDirectory":"/tmp","preferredTerminal":"Terminal","wakeKeywordsScore":2,"wakeKeywordsThreshold":0.25,"cooldownSeconds":2,"claudeExecutable":"claude"}"#
+        let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
+        XCTAssertEqual(s.mascotID, "classic")
+        XCTAssertEqual(s.mascotColorHex, "#D87757")
+    }
+
     func test_decodingLegacyBlob_backfillsEditorIntegration() throws {
         // claude-code persisted before `editorIntegration` existed → must be
         // backfilled, else an editor target silently falls back to a terminal.

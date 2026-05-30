@@ -55,7 +55,15 @@ final class NotchIslandPanel {
 
     /// Re-host for the new model, resize + reposition under the notch, and
     /// order front (or out when the island should be hidden, e.g. `off`).
-    func update(_ model: IslandModel) {
+    ///
+    /// `mascot` / `mascotColorHex` are the user-selected mascot + body color
+    /// (resolved by `AppController` from `Settings`). The color crosses the
+    /// app/Kit boundary as a hex string and is converted to `Color` here, in the
+    /// SwiftUI layer. Both default to Classic + clay so the onboarding call sites
+    /// — which run before any selection exists — compile and render unchanged.
+    func update(_ model: IslandModel,
+                mascot: Mascot = MascotCatalog.byID("classic"),
+                mascotColorHex: String = "#D87757") {
         guard let screen = Self.notchScreen() else { panel.orderOut(nil); return }
         let notch = screen.notchSize
         let f = screen.frame
@@ -69,7 +77,8 @@ final class NotchIslandPanel {
         hasBloomed = true
         host.rootView = AnyView(
             VStack(spacing: 0) {
-                IslandView(model: model, topInset: notch.height, notchWidth: notch.width, bloom: bloom)
+                IslandView(model: model, topInset: notch.height, notchWidth: notch.width, bloom: bloom,
+                           mascot: mascot, mascotColor: Color(hex: mascotColorHex))
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
