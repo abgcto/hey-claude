@@ -17,7 +17,7 @@ struct IslandView: View {
     /// this region (behind the physical notch) so the two fuse into one shape.
     var topInset: CGFloat = 0
     /// Physical notch width — kept clear in the centre so nothing renders over the
-    /// camera. Total island width = leftArea + notchWidth + rightArea.
+    /// camera. Total island width = 2 × sideArea + notchWidth (symmetric).
     var notchWidth: CGFloat = 189
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -28,121 +28,165 @@ struct IslandView: View {
 
     // MARK: - Per-state geometry
 
-    private var isTranscript: Bool {
-        if case .transcript = model.visual { return true }
-        return false
+    /// Reveal = hearing OR launching: the two-tier band with a spoken line below
+    /// the notch. Both share one size so hearing → launching never resizes.
+    private var isReveal: Bool {
+        switch model.visual {
+        case .transcript, .launching: return true
+        default: return false
+        }
     }
 
     private var isMuted: Bool { model.visual == .muted }
 
-    /// Snug well for the ~22px mascot (mascot + breathing room).
-    private let leftArea: CGFloat = 34
+    /// The notch-row side zones (mascot left of the camera, compact content right).
+    /// CONSTANT across every state so the band width never ping-pongs — the only
+    /// width move is the single bloom into the reveal band and the collapse back.
+    private let sideArea: CGFloat = 26
 
-    /// Right-of-camera content width, sized to the state (mockup proportions).
-    private var rightArea: CGFloat {
-        switch model.visual {
-        case .hidden, .idle, .muted: return 34
-        case .listening:             return 78
-        case .transcript:            return 190
-        case .launching, .paused:    return 96
+    /// Gap between an icon's INNER edge and the camera. Small, so the icons hug
+    /// the notch — leaving the larger remainder as outer padding (outer > inner).
+    private let innerGap: CGFloat = 3
+
+    /// `NotchShape`'s top corner radius — the solid black body is inset by this on
+    /// each outer side (the top flare connects body to screen edge), so the band
+    /// is widened by it on each side and the body fully covers the side sections.
+    private let bodyInset: CGFloat = 6
+
+    /// The band width is CONSTANT across every state — the width never animates.
+    /// Only the HEIGHT changes (reveal states grow a row downward). The spoken
+    /// line lives below the notch within this same width (truncating if long).
+    private var islandWidth: CGFloat { 2 * sideArea + notchWidth + 2 * bodyInset }
+
+    var body: some View {
+        islandContent
+            // Constant width; the HEIGHT is intrinsic — it grows down to fit the
+            // reveal line (1 or 2 lines) and shrinks back, animated on state change.
+            .frame(width: islandWidth)
+            // Pure black so it fuses with the camera notch into one dynamic-island shape.
+            .background(
+                NotchShape(topCornerRadius: 6, bottomCornerRadius: 10)
+                    .fill(Color.black)
+            )
+            // Clip to the same shape so the reveal line glides into view under the
+            // rounded bottom edge as the band grows open.
+            .clipShape(NotchShape(topCornerRadius: 6, bottomCornerRadius: 10))
+            .compositingGroup()
+            // Paused dims hard (~60%); muted is only slightly dimmed.
+            .opacity(model.dimmed ? 0.6 : (isMuted ? 0.78 : 1))
+            .opacity(model.hidden ? 0 : 1)
+            // One easing drives the grow/shrink AND the line cross-fade on any state change.
+            .animation(shapeAnimation, value: model.visual)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.dimmed)
+    }
+
+    /// Always the notch strip (mascot · camera · compact content). Reveal states
+    /// (hearing + launching) add ONE line below the notch — no kicker, no subtitle.
+    /// It grows the band to fit, then collapses back.
+    private var islandContent: some View {
+        VStack(spacing: 0) {
+            notchRow { rightContent }
+            if isReveal {
+                revealLine
+            }
         }
     }
 
-    private var islandWidth: CGFloat { leftArea + notchWidth + rightArea }
+    /// The single below-notch line: the spoken sentence during hearing, morphing
+    /// (cross-fade) into "→ Launching Claude" on launch. Its identity changes with
+    /// the phase so the swap cross-fades; insertion/removal fades the open/close.
+    @ViewBuilder private var revealLine: some View {
+        revealLineContent
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .id(isLaunching)
+            .transition(.opacity)
+    }
 
-    /// Only the transcript state breaks the notch height, growing down + out.
-    private var bandHeight: CGFloat { isTranscript ? topInset + 14 : topInset }
+    @ViewBuilder private var revealLineContent: some View {
+        if isLaunching {
+            // Launch: the action replaces the sentence — one coral line, arrow
+            // nudging. The full command already went to Claude Code (not echoed).
+            HStack(spacing: 5) {
+                NudgingArrow(color: coral, reduce: reduceMotion)
+                Text("Launching Claude")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(coral)
+                    .lineLimit(1)
+            }
+        } else {
+            // Hearing: the spoken sentence — wraps to 2 lines max, then ellipsis.
+            Text(revealText)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(inkText)
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
-    var body: some View {
+    private var isLaunching: Bool {
+        if case .launching = model.visual { return true }
+        return false
+    }
+
+    private var revealText: String {
+        switch model.visual {
+        case .transcript(let t), .launching(let t): return t
+        default: return ""
+        }
+    }
+
+    /// One notch-height row: mascot (left of the camera) · clear camera gap ·
+    /// per-state icon content (right of the camera). Height is exactly the lip.
+    private func notchRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 0) {
-            // Left of the camera: the mascot, present in every visible state.
+            // Left of the camera: the mascot sits CLOSE to the notch (small inner
+            // gap), leaving more padding on the outer side — not dead-centered.
             MascotView()
-                .frame(width: 22, height: 14)
+                .frame(width: 16, height: 10)
                 .offset(y: mascotBob)
                 .animation(mascotBobAnimation, value: mascotBobActive)
-                .frame(width: leftArea)
+                .padding(.trailing, innerGap)
+                .frame(width: sideArea, alignment: .trailing)
             // The camera gap — kept clear (the physical notch sits here).
             Color.clear.frame(width: notchWidth)
-            // Right of the camera: the per-state content.
-            ZStack(alignment: .leading) { rightContent }
-                .frame(width: rightArea, alignment: .leading)
+            // Right of the camera: mirrors the left — content hugs the notch on
+            // its inner (leading) side, more padding on the outer side.
+            ZStack { content() }
+                .padding(.leading, innerGap)
+                .frame(width: sideArea, alignment: .leading)
         }
-        .frame(width: islandWidth, height: bandHeight)
-        // Pure black so it fuses with the camera notch into one dynamic-island shape.
-        .background(
-            NotchShape(topCornerRadius: 6, bottomCornerRadius: 10)
-                .fill(Color.black)
-        )
-        .compositingGroup()
-        // Paused dims hard (~60%); muted is only slightly dimmed.
-        .opacity(model.dimmed ? 0.6 : (isMuted ? 0.78 : 1))
-        .opacity(model.hidden ? 0 : 1)
-        .animation(shapeAnimation, value: islandWidth)
-        .animation(shapeAnimation, value: bandHeight)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.dimmed)
+        .frame(width: 2 * sideArea + notchWidth)   // compact; centered when the band is taller
+        .frame(height: topInset)
     }
 
     private var shapeAnimation: Animation? {
-        reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)
+        // The mockup's band easing: cubic-bezier(.4, 1.1, .3, 1) over 0.5s — a
+        // smooth ease-out with a slight overshoot so the island expands and grows
+        // open (no abrupt cut), then settles.
+        reduceMotion ? nil : .timingCurve(0.4, 1.1, 0.3, 1.0, duration: 0.5)
     }
 
     // MARK: - Right content (one branch per visual state)
 
     @ViewBuilder private var rightContent: some View {
         switch model.visual {
-        case .hidden:
+        case .hidden, .idle, .transcript, .launching:
+            // hidden/armed show nothing on the right; transcript & launching put
+            // their content BELOW the notch (see `revealLayout`), not here. The
+            // mascot's presence alone signals "armed, listening for the wake word."
             EmptyView()
 
-        case .idle:
-            // A single calm dim grey dot.
-            Circle()
-                .fill(inkText.opacity(0.22))
-                .frame(width: 6, height: 6)
-                .padding(.leading, 2)
-
         case .listening:
-            HStack(spacing: 7) {
-                StatusDot(live: true, color: coral, reduce: reduceMotion)
-                LevelBars(color: coral, reduce: reduceMotion)
-            }
-            .padding(.leading, 2)
-
-        case .transcript(let text):
-            VStack(alignment: .leading, spacing: 2) {
-                // Coral mono kicker with a leading live dot.
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(coral)
-                        .frame(width: 5, height: 5)
-                        .shadow(color: coral.opacity(0.8), radius: 3)
-                    Text("HEARING")
-                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                        .tracking(1.4)
-                        .foregroundStyle(coral)
-                }
-                // The spoken line — single line, truncates with a tail ellipsis.
-                Text(text)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(inkText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .padding(.leading, 2)
-            .padding(.trailing, 6)
-
-        case .launching:
-            HStack(spacing: 7) {
-                Text("→")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(coral)
-                Text("LAUNCHING").modifier(LabelStyle(color: coral))
-            }
-            .padding(.leading, 2)
+            // Equalizer only — it already reads as "live, listening"; a separate
+            // pulsing dot would be redundant in this tiny space.
+            LevelBars(color: coral, reduce: reduceMotion)
 
         case .muted:
             // White mic glyph crossed by a coral diagonal slash (mockup's
-            // slashed-mic SVG). Drawn as a plain mic + an explicit coral stroke
-            // so it reads in colour on macOS 13 (no hierarchical two-tone API).
+            // slashed-mic SVG): a plain mic + an explicit coral stroke.
             ZStack {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 11, weight: .semibold))
@@ -151,16 +195,13 @@ struct IslandView: View {
                     .frame(width: 15, height: 15)
             }
             .frame(width: 15, height: 15)
-            .padding(.leading, 2)
 
         case .paused:
-            HStack(spacing: 7) {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(violet)
-                Text("PAUSED").modifier(LabelStyle(color: violet))
-            }
-            .padding(.leading, 2)
+            // Compact pause glyph only — the label wouldn't fit the snug section;
+            // the dimmed violet treatment carries the "on hold" meaning.
+            Image(systemName: "pause.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(violet)
         }
     }
 
@@ -199,41 +240,22 @@ private struct MutedSlash: View {
     }
 }
 
-/// Mono ~9px uppercase status label — the island's text role besides the
-/// transcript. Matches the mockup's `.label`.
-private struct LabelStyle: ViewModifier {
-    var color: Color
-    func body(content: Content) -> some View {
-        content
-            .font(.system(size: 9, weight: .medium, design: .monospaced))
-            .tracking(0.8)
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .fixedSize()
-    }
-}
-
-/// The leading live status dot. The coral variant pulses; pulse is suppressed
-/// under reduced motion. Matches the mockup's `.live-dot--pulse`.
-private struct StatusDot: View {
-    let live: Bool
+/// The launching arrow that gently nudges right (mockup's `arrow--nudge`) to
+/// give the hand-off a sense of forward motion. Frozen under reduced motion.
+private struct NudgingArrow: View {
     let color: Color
     let reduce: Bool
-    @State private var on = false
+    @State private var nudge = false
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-            .shadow(color: live ? color.opacity(0.8) : .clear, radius: live ? 4 : 0)
-            .scaleEffect(live && on ? 1.0 : (live ? 0.78 : 1.0))
-            .opacity(live ? (on ? 1.0 : 0.45) : 1.0)
-            .onAppear {
-                guard live, !reduce else { return }
-                withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
-                    on = true
-                }
-            }
+        Text("→")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(color)
+            .offset(x: nudge ? 3 : 0)
+            .animation(reduce ? nil
+                       : .easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                       value: nudge)
+            .onAppear { if !reduce { nudge = true } }
     }
 }
 
@@ -251,12 +273,17 @@ private struct LevelBars: View {
     ]
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
+        // Center-aligned bars so the equalizer's vertical midline matches the
+        // mascot's (both are centered in the notch row). Growing from the center
+        // also keeps it visually balanced as bars animate.
+        HStack(alignment: .center, spacing: 1.5) {
             ForEach(bars.indices, id: \.self) { i in
                 Capsule()
                     .fill(color)
-                    .frame(width: 2.5, height: bars[i].height)
-                    .scaleEffect(y: animating ? 1.0 : 0.4, anchor: .bottom)
+                    // 2px bars × 5 + 1.5px gaps × 4 = 16px total — matches the
+                    // mascot's 16px width so the two mirror across the camera.
+                    .frame(width: 2, height: bars[i].height)
+                    .scaleEffect(y: animating ? 1.0 : 0.4, anchor: .center)
                     .animation(
                         reduce ? nil
                         : .easeInOut(duration: 0.45)
@@ -265,7 +292,7 @@ private struct LevelBars: View {
                         value: animating)
             }
         }
-        .frame(height: 14, alignment: .bottom)
+        .frame(height: 14)
         .onAppear { if !reduce { animating = true } }
     }
 }

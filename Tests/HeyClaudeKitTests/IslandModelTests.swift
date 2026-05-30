@@ -54,7 +54,15 @@ final class IslandModelTests: XCTestCase {
         XCTAssertEqual(m.visual, .listening)
     }
     func test_workingIsLaunchingVisual() {
-        XCTAssertEqual(IslandModel(state: .working, transcript: "x").visual, .launching)
+        XCTAssertEqual(IslandModel(state: .working, transcript: "x").visual, .launching("x"))
+    }
+    func test_workingCarriesTranscriptIntoLaunching() {
+        // launching reuses the reveal band and keeps the spoken line visible
+        XCTAssertEqual(IslandModel(state: .working, transcript: "open the repo").visual,
+                       .launching("open the repo"))
+    }
+    func test_workingWithoutTranscriptIsEmptyLaunching() {
+        XCTAssertEqual(IslandModel(state: .working, transcript: nil).visual, .launching(""))
     }
     func test_mutedIsMutedVisual() {
         XCTAssertEqual(IslandModel(state: .muted, transcript: nil).visual, .muted)

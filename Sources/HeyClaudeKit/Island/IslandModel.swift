@@ -13,8 +13,8 @@ public struct IslandModel: Equatable {
         case hidden                 // off — island not drawn
         case idle                   // armed — calm dim dot
         case listening              // hot — pulsing live dot + coral equalizer
-        case transcript(String)     // hot + revealing + text — taller band, kicker + line
-        case launching              // working — coral arrow + LAUNCHING label
+        case transcript(String)     // hot + revealing + text — taller band, "● HEARING" + line
+        case launching(String)      // working — taller band, "→ LAUNCHING" + the line (may be "")
         case muted                  // mic off — slashed-mic glyph, dimmed
         case paused                 // call-guard hold — violet pause glyph + label, dimmed
     }
@@ -48,7 +48,10 @@ public struct IslandModel: Equatable {
                 shape = .expanded; content = .listening; visual = .listening
             }
         case .working:
-            shape = .expanded; content = .launching; visual = .launching
+            // Launching reuses the reveal band: it carries the transcript so the
+            // spoken line stays visible through the hand-off (kicker → LAUNCHING),
+            // and the band never resizes between hearing and launching.
+            shape = .expanded; content = .launching; visual = .launching(transcript ?? "")
             showsSlash = false; dimmed = false; hidden = false
         }
     }
