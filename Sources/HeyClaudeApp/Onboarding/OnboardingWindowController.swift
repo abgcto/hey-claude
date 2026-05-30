@@ -7,15 +7,26 @@ import SwiftUI
 /// `NotchIslandPanel`) and flip the activation policy to `.regular` while it's
 /// up, reverting to `.accessory` on close.
 @MainActor
-final class OnboardingWindowController {
+final class OnboardingWindowController: NSObject, NSWindowDelegate {
     private let controller: AppController
     private var window: NSWindow?
     private var model: OnboardingModel?
     private let flight = MascotFlightWindow()
+    /// Set in `runFinale()` once the real "Done" path has committed, so the
+    /// `windowWillClose` handler knows not to commit a second time.
+    private var committed = false
 
-    init(controller: AppController) { self.controller = controller }
+    init(controller: AppController) {
+        self.controller = controller
+        super.init()
+    }
 
     func show() {
+        // Tear down any live pipeline before the window/enrollment opens, so a
+        // re-run's mic tap can't coexist with `EnrollmentRecorder`'s second
+        // `AVAudioEngine` tap. No-op on first run (nothing started yet).
+        controller.suspendForOnboarding()
+
         if let window {
             NSApp.setActivationPolicy(.regular)
             window.makeKeyAndOrderFront(nil)
@@ -38,6 +49,7 @@ final class OnboardingWindowController {
         win.backgroundColor = .black
         win.isReleasedWhenClosed = false
         win.contentView = host
+        win.delegate = self
         win.center()
         window = win
 
@@ -50,6 +62,9 @@ final class OnboardingWindowController {
     /// up into the notch shell on a separate overlay (so the window doesn't linger),
     /// and commit (resident island + pipeline) the moment it lands.
     private func runFinale() {
+        // Mark committed up front: the finale owns the commit from here on, so any
+        // window close (`orderOut` below, or a stray close event) won't re-commit.
+        committed = true
         guard let window, let model, let screen = window.screen ?? NSScreen.main else {
             self.model?.commitFinish(); close(); return
         }
@@ -82,6 +97,24 @@ final class OnboardingWindowController {
         window?.orderOut(nil)
         window = nil
         model = nil
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    /// The red close button / ⌘W path. AppKit fires this *as* the window closes;
+    /// the "Not now" button and the finale both use `orderOut`, which does NOT
+    /// fire this — so this only catches a raw window dismissal.
+    ///
+    /// If the finale already committed, do nothing. Otherwise treat it like
+    /// "Skip for now": `model?.skip()` leaves the app functional (bundled keyword
+    /// + booted pipeline), then we tear down our own state and revert the
+    /// activation policy. We must NOT call `close()`/`orderOut` here — the window
+    /// is already closing, and re-closing would recurse.
+    func windowWillClose(_ notification: Notification) {
+        if committed { return }
+        model?.skip()
+        flight.dismiss()
+        model = nil
+        window = nil
         NSApp.setActivationPolicy(.accessory)
     }
 }

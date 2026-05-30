@@ -210,12 +210,20 @@ final class AppController {
         restartPipeline()
     }
 
-    /// Tear down any running capture and (re)boot from the current settings —
-    /// used after onboarding / re-run so we never stack a second mic tap.
-    private func restartPipeline() {
+    /// Tear down the live mic tap so onboarding's `EnrollmentRecorder` can't
+    /// coexist with a second `AVAudioEngine` tap on the same hardware input.
+    /// Called before the onboarding window opens (a no-op on first run, since the
+    /// pipeline hasn't started). `restartPipeline()` reuses it for re-(boot).
+    func suspendForOnboarding() {
         audio?.stop(); audio = nil
         wake = nil; transcriber = nil; capture = nil; voice = nil; executor = nil
         didStart = false
+    }
+
+    /// Tear down any running capture and (re)boot from the current settings —
+    /// used after onboarding / re-run so we never stack a second mic tap.
+    private func restartPipeline() {
+        suspendForOnboarding()
         start()
     }
 

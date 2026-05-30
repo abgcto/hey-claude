@@ -204,6 +204,11 @@ final class OnboardingModel {
             projectDirectory: projectDirectory)
     }
 
-    /// Skip the whole flow — use the bundled default keyword.
-    func skip() { controller.completeOnboarding() }
+    /// Skip the whole flow — use the bundled default keyword. Stops any in-flight
+    /// enrollment recorder first so its mic tap doesn't outlive the window.
+    func skip() {
+        recorder?.stop()
+        recorder = nil
+        controller.completeOnboarding()
+    }
 }
