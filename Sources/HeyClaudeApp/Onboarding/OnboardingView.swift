@@ -75,7 +75,11 @@ struct OnboardingView: View {
             }
             Spacer()
             VStack(spacing: 12) {
-                actionButton("Allow microphone") { model.requestMicAndTrain() }
+                if model.micDenied {
+                    actionButton("Open System Settings") { model.openMicSettings() }
+                } else {
+                    actionButton("Allow microphone") { model.requestMicAndTrain() }
+                }
                 Button("Not now") { model.skip(); onClose() }
                     .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkFaint)
             }
@@ -116,6 +120,11 @@ struct OnboardingView: View {
                 }
             }
             .opacity(model.enrolling ? 0 : 1)
+            if !model.enrolling {
+                Button("Skip for now") { model.skip(); onClose() }
+                    .buttonStyle(.plain).font(gs(12.5, .medium)).foregroundStyle(inkFaint)
+                    .padding(.top, 18)
+            }
             Spacer().frame(height: 34)
         }
     }

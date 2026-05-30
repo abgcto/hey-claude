@@ -15,6 +15,7 @@ final class OnboardingModel {
 
     private(set) var step: Step = .welcome
     private(set) var micGranted = false
+    private(set) var micDenied = false       // permission previously denied/restricted
     private(set) var capturedCount = 0          // good samples so far (0...3)
     let totalSamples = 3
     private(set) var isRecording = false
@@ -53,17 +54,48 @@ final class OnboardingModel {
     func goToMic() { step = .mic }
 
     func requestMicAndTrain() {
-        AVCaptureDevice.requestAccess(for: .audio) { granted in
-            Task { @MainActor in
-                self.micGranted = granted
-                guard granted else {
-                    self.statusLine = "Microphone access is needed — enable it in System Settings ▸ Privacy ▸ Microphone."
-                    return
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            micGranted = true
+            step = .train
+            beginTraining()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                Task { @MainActor in
+                    self.micGranted = granted
+                    guard granted else {
+                        self.micDenied = true
+                        self.statusLine = "Microphone access is needed — enable it in System Settings ▸ Privacy ▸ Microphone."
+                        return
+                    }
+                    self.step = .train
+                    self.beginTraining()
                 }
-                self.step = .train
-                self.beginTraining()
             }
+        case .denied, .restricted:
+            // requestAccess no-ops once denied — surface a real settings affordance.
+            micDenied = true
+            statusLine = "Microphone access is needed — enable it in System Settings ▸ Privacy ▸ Microphone."
+        @unknown default:
+            micDenied = true
+            statusLine = "Microphone access is needed — enable it in System Settings ▸ Privacy ▸ Microphone."
         }
+    }
+
+    /// Open System Settings ▸ Privacy ▸ Microphone so the user can grant access.
+    func openMicSettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+    }
+
+    /// Re-check on window refocus: if the user granted mic access in System
+    /// Settings and came back, advance straight to training.
+    func revalidateMicIfWaiting() {
+        guard step == .mic,
+              AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return }
+        micDenied = false
+        micGranted = true
+        step = .train
+        beginTraining()
     }
 
     // MARK: - Training

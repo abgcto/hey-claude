@@ -117,4 +117,10 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         window = nil
         NSApp.setActivationPolicy(.accessory)
     }
+
+    /// Window regained focus — likely the user returning from System Settings
+    /// after granting mic access. Re-check and auto-advance to training if so.
+    func windowDidBecomeKey(_ notification: Notification) {
+        model?.revalidateMicIfWaiting()
+    }
 }
