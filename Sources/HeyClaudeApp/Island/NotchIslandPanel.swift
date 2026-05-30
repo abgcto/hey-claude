@@ -23,6 +23,9 @@ private final class NonConstrainingPanel: NSPanel {
 final class NotchIslandPanel {
     private let panel: NSPanel
     private let host: NSHostingView<AnyView>
+    /// The island blooms open on the panel's FIRST update (app launch), then never
+    /// again — ordinary state changes shouldn't re-trigger the entrance.
+    private var hasBloomed = false
 
     init() {
         host = NSHostingView(rootView: AnyView(EmptyView()))
@@ -62,9 +65,11 @@ final class NotchIslandPanel {
         let canvasHeight: CGFloat = 260
         panel.setFrame(NSRect(x: f.origin.x, y: f.maxY - canvasHeight,
                               width: f.width, height: canvasHeight), display: true)
+        let bloom = !hasBloomed
+        hasBloomed = true
         host.rootView = AnyView(
             VStack(spacing: 0) {
-                IslandView(model: model, topInset: notch.height, notchWidth: notch.width)
+                IslandView(model: model, topInset: notch.height, notchWidth: notch.width, bloom: bloom)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

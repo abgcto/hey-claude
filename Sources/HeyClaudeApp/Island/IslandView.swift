@@ -19,10 +19,13 @@ struct IslandView: View {
     /// Physical notch width — kept clear in the centre so nothing renders over the
     /// camera. Total island width = 2 × sideArea + notchWidth (symmetric).
     var notchWidth: CGFloat = 189
+    /// Bloom open (widen from a sliver) on first appear — set by the panel only on
+    /// its FIRST update each launch, so the island makes an entrance every time the
+    /// app opens, but never re-blooms on ordinary state changes.
+    var bloom: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Drives the empty-shell entrance: the placeholder blooms open (widens from a
-    /// sliver) when it first appears in the notch during onboarding.
+    /// Drives the bloom-in entrance.
     @State private var entered = false
 
     // Skin (the locked palette).
@@ -86,11 +89,11 @@ struct IslandView: View {
             // Empty-shell entrance: the placeholder blooms open — widening from a
             // sliver (with a slight overshoot) the first time it appears in the
             // notch during onboarding. Normal island states skip this (full size).
-            .scaleEffect(x: (entered || !isEmpty) ? 1 : 0.42,
-                         y: (entered || !isEmpty) ? 1 : 0.82, anchor: .top)
-            .opacity((entered || !isEmpty) ? 1 : 0)
+            .scaleEffect(x: (entered || !bloom) ? 1 : 0.42,
+                         y: (entered || !bloom) ? 1 : 0.82, anchor: .top)
+            .opacity((entered || !bloom) ? 1 : 0)
             .onAppear {
-                guard isEmpty, !reduceMotion else { entered = true; return }
+                guard bloom, !reduceMotion else { entered = true; return }
                 withAnimation(.timingCurve(0.34, 1.2, 0.3, 1.0, duration: 0.55).delay(0.06)) {
                     entered = true
                 }
