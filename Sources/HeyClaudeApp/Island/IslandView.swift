@@ -12,41 +12,47 @@ import HeyClaudeKit
 /// `accessibilityReduceMotion` so a reduced-motion system freezes to a still seam.
 struct IslandView: View {
     let model: IslandModel
+    /// Height of the notch/menu-bar lip. The island's black body fills UP through
+    /// this region (behind the physical notch) so the two fuse into one shape;
+    /// the visible content sits in the strip below it.
+    var topInset: CGFloat = 0
+    /// Physical notch width — the resting island matches it so the body sits
+    /// invisibly over the notch and only flares wider when expanded.
+    var notchWidth: CGFloat = 189
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Skin (the locked palette).
-    private let plum = Color(red: 0.043, green: 0.027, blue: 0.071)   // #0b0712
     private let coral = Color(red: 1.0, green: 0.541, blue: 0.420)    // #ff8a6b
     private let violet = Color(red: 0.482, green: 0.361, blue: 1.0)   // #7b5cff
     private let inkText = Color(red: 0.953, green: 0.949, blue: 0.937) // #f3f2ef
 
     private var expanded: Bool { model.shape == .expanded }
 
-    var body: some View {
-        HStack(spacing: expanded ? 12 : 0) {
-            // Mascot well. At rest the head peeks above the seam's lower lip;
-            // expanded it sits flush in its 24×15 left well. Never clipped — the
-            // peek is intentional, so the well sits at the top edge.
-            MascotView()
-                .frame(width: 24, height: 15)
+    // Dynamic-island layout: KEEP the notch HEIGHT, widen sideways. Content lives
+    // in the side areas BESIDE the camera; the centre gap (the camera's width) is
+    // kept clear so nothing renders over the lens.
+    private let leftArea: CGFloat = 60
+    private var rightArea: CGFloat { expanded ? 176 : 60 }
+    private var islandWidth: CGFloat { leftArea + notchWidth + rightArea }
 
-            if expanded {
-                content
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+    var body: some View {
+        HStack(spacing: 0) {
+            // Left of the camera: the mascot, always present.
+            MascotView()
+                .frame(width: 22, height: 14)
+                .frame(width: leftArea)
+            // The camera gap — kept clear (the physical notch sits here).
+            Color.clear.frame(width: notchWidth)
+            // Right of the camera: status content when expanded.
+            ZStack(alignment: .leading) { if expanded { content } }
+                .frame(width: rightArea, alignment: .leading)
         }
-        .padding(.leading, expanded ? 12 : 0)
-        .padding(.trailing, expanded ? 18 : 0)
-        .frame(width: expanded ? 320 : 150, height: expanded ? 44 : 14, alignment: .top)
+        // The black band is exactly the NOTCH HEIGHT; only the width changes.
+        .frame(width: islandWidth, height: topInset)
+        // Pure black so it fuses with the camera notch into one dynamic-island shape.
         .background(
-            UnevenRoundedRectangle(bottomLeadingRadius: expanded ? 17 : 12,
-                                   bottomTrailingRadius: expanded ? 17 : 12)
-                .fill(plum)
-                .overlay(
-                    UnevenRoundedRectangle(bottomLeadingRadius: expanded ? 17 : 12,
-                                           bottomTrailingRadius: expanded ? 17 : 12)
-                        .strokeBorder(coral.opacity(0.15), lineWidth: 1)
-                )
+            NotchShape(topCornerRadius: 6, bottomCornerRadius: 10)
+                .fill(Color.black)
         )
         .overlay(alignment: .leading) { if model.dimmed { curtain } }
         .overlay { if model.showsSlash { slash } }
