@@ -28,6 +28,11 @@ struct IslandView: View {
     /// user picks otherwise.
     var mascot: Mascot = MascotCatalog.byID("classic")
     var mascotColor: Color = Color(red: 0.847, green: 0.463, blue: 0.341)  // #D87757 clay
+    /// Hover-panel actions/data. `nil` → non-interactive (onboarding). When present,
+    /// hovering the band drops the control panel and clicking the mascot mutes.
+    var controls: IslandControls? = nil
+    /// Reports the dropped panel's height so the panel's hit-region tracks it.
+    var onPanelHeight: ((CGFloat) -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Drives the bloom-in entrance.
@@ -40,6 +45,12 @@ struct IslandView: View {
     /// Bumped each time the island enters the muted state, firing the mascot's
     /// one-shot "settle down" droop — the calm inverse of the wake pop.
     @State private var sleepTrigger = 0
+
+    /// Hover-driven: the control panel is dropped below the notch.
+    @State private var isExpanded = false
+    /// Debounces collapse so brushing past the band (or the band→panel gap) doesn't
+    /// snap it shut.
+    @State private var collapseWork: DispatchWorkItem?
 
     // Skin (the locked palette).
     private let coral = Color(red: 1.0, green: 0.541, blue: 0.420)    // #ff8a6b
@@ -75,7 +86,7 @@ struct IslandView: View {
     /// The notch-row side zones (mascot left of the camera, compact content right).
     /// CONSTANT across every state so the band width never ping-pongs — the only
     /// width move is the single bloom into the reveal band and the collapse back.
-    private let sideArea: CGFloat = 26
+    private let sideArea = IslandGeometry.sideArea
 
     /// Gap between an icon's INNER edge and the camera. Small, so the icons hug
     /// the notch — leaving the larger remainder as outer padding (outer > inner).
@@ -84,7 +95,7 @@ struct IslandView: View {
     /// `NotchShape`'s top corner radius — the solid black body is inset by this on
     /// each outer side (the top flare connects body to screen edge), so the band
     /// is widened by it on each side and the body fully covers the side sections.
-    private let bodyInset: CGFloat = 6
+    private let bodyInset = IslandGeometry.bodyInset
 
     /// The band width is CONSTANT across every state — the width never animates.
     /// Only the HEIGHT changes (reveal states grow a row downward). The spoken
@@ -125,6 +136,12 @@ struct IslandView: View {
             // One easing drives the grow/shrink AND the line cross-fade on any state change.
             .animation(shapeAnimation, value: model.visual)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.dimmed)
+            // Hover-to-expand: pointer over the band/panel drops the controls; the
+            // dropped panel reports its height so the hit-region tracks it exactly.
+            .onHover { handleHover($0) }
+            .onPreferenceChange(PanelHeightKey.self) { onPanelHeight?($0) }
+            // A transient state (wake fired, launching, failure) must close the panel.
+            .onChange(of: model.visual) { _, _ in if isExpanded && !canExpand { collapseNow() } }
     }
 
     /// Always the notch strip (mascot · camera · compact content). Reveal states
@@ -141,6 +158,11 @@ struct IslandView: View {
                     notchRow { rightContent }
                     if isReveal {
                         revealLine
+                    } else if showControlPanel, let controls {
+                        IslandControlPanel(controls: controls,
+                                           ink: inkText, dim: inkText.opacity(0.6),
+                                           collapse: { collapseNow() })
+                            .transition(.opacity)
                     }
                 }
             }
@@ -223,7 +245,7 @@ struct IslandView: View {
             // gap), leaving more padding on the outer side — not dead-centered.
             MascotView(mascot: mascot, bodyColor: isMuted ? mutedMascot : mascotColor)
                 .frame(width: mascotSize.width, height: mascotSize.height)
-                .offset(y: mascotBob + mascotBaselineShift)
+                .offset(y: mascotBob + mascotCenterShift)
                 .animation(mascotBobAnimation, value: mascotBobActive)
                 // Resume from mute → the mascot pops awake: a quick stretch-up,
                 // squash, and bouncy settle (anchored at its feet) with a small hop,
@@ -271,6 +293,10 @@ struct IslandView: View {
                 }
                 .padding(.trailing, innerGap)
                 .frame(width: sideArea, alignment: .trailing)
+                // Click the mascot side → toggle mute (the #1 action, no menu). The
+                // whole side zone is the target so it's easy to hit at notch size.
+                .contentShape(Rectangle())
+                .onTapGesture { controls?.toggleMute() }
             // The camera gap — kept clear (the physical notch sits here).
             Color.clear.frame(width: notchWidth)
             // Right of the camera: mirrors the left — content hugs the notch on
@@ -294,26 +320,28 @@ struct IslandView: View {
 
     @ViewBuilder private var rightContent: some View {
         switch model.visual {
-        case .hidden, .idle, .transcript, .launching, .failed, .empty:
-            // hidden/armed show nothing on the right; transcript, launching & failed
-            // put their content BELOW the notch (see `revealLine`), not here. The
-            // mascot's presence alone signals "armed, listening for the wake word."
+        case .hidden, .transcript, .launching, .failed, .empty:
+            // transcript, launching & failed put their content BELOW the notch
+            // (see `revealLine`), not here; hidden shows nothing.
             EmptyView()
 
+        case .idle:
+            // Armed — five short, flat bars: the level meter "at rest" (aligns with
+            // the 5 listening bars). NOT a mic. Taps to mute.
+            RestingBars(color: inkText.opacity(0.5))
+                .frame(width: 16)
+                .contentShape(Rectangle())
+                .onTapGesture { controls?.toggleMute() }
+
         case .listening:
-            // Equalizer only — it already reads as "live, listening"; a separate
+            // Equalizer — it already reads as "live, listening"; a separate
             // pulsing dot would be redundant in this tiny space.
             LevelBars(color: coral, reduce: reduceMotion)
 
         case .muted:
             // Native slashed-mic SF Symbol — mic + slash as one Apple glyph,
-            // dimmed to read as a calm "off" state.
-            Image(systemName: "mic.slash.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(mutedTint)
-                // Mirror the mascot's 16px footprint so the left (mascot) and right
-                // (mic) zones have symmetric inner + outer padding about the notch.
-                .frame(width: 16)
+            // dimmed to read as a calm "off" state. Tap to resume.
+            micGlyph("mic.slash.fill", tint: mutedTint)
 
         case .paused:
             // Compact pause glyph only — the label wouldn't fit the snug section;
@@ -322,6 +350,58 @@ struct IslandView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(violet)
         }
+    }
+
+    /// The right-side mic glyph (on / off). 16px to mirror the mascot's footprint;
+    /// taps toggle mute so the same affordance flips between states.
+    private func micGlyph(_ systemName: String, tint: Color) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: 16)
+            .contentShape(Rectangle())
+            .onTapGesture { controls?.toggleMute() }
+    }
+
+    // MARK: - Hover expansion
+
+    /// Resting-ish states only — never grow the panel mid-reveal or when hidden/off.
+    private var canExpand: Bool {
+        guard controls != nil else { return false }
+        switch model.visual {
+        case .idle, .listening, .muted: return true
+        default: return false
+        }
+    }
+
+    /// Show the dropdown only while expanded, interactive, and not showing a reveal
+    /// line (the two below-notch contents are mutually exclusive).
+    private var showControlPanel: Bool {
+        isExpanded && controls != nil && !isEmpty && !isReveal
+    }
+
+    private func handleHover(_ hovering: Bool) {
+        guard canExpand else { return }
+        if hovering {
+            collapseWork?.cancel()
+            if !isExpanded {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { isExpanded = true }
+            }
+        } else {
+            scheduleCollapse()
+        }
+    }
+
+    private func scheduleCollapse() {
+        collapseWork?.cancel()
+        let work = DispatchWorkItem { collapseNow() }
+        collapseWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private func collapseNow() {
+        guard isExpanded else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { isExpanded = false }
     }
 
     // MARK: - Mascot sizing
@@ -336,12 +416,21 @@ struct IslandView: View {
         return CGSize(width: Self.mascotSlotW, height: h)
     }
 
-    /// Keep every mascot's feet on the 10-row classic baseline. The row centers the
-    /// frame vertically, so a taller frame would otherwise sink the body; shifting
-    /// up by half the surplus height pins the bottom and sends the extra room up.
-    private var mascotBaselineShift: CGFloat {
-        let classicH = Self.mascotSlotW * 10 / 16
-        return -(mascotSize.height - classicH) / 2
+    /// Vertically center each mascot's INKED rows in the notch row, so its visual
+    /// mass lines up with the right-side glyph (mic / bars / pause) regardless of
+    /// grid height. The old rule pinned every mascot's feet to the 10-row classic
+    /// baseline, which left a taller grid (Birthday's hat + candle, 16×17) floating
+    /// ~2pt high above the mic. 10-row mascots are unaffected — their ink already
+    /// centers, so the shift stays 0 for Classic/Sleepy/Wink/etc.
+    private var mascotCenterShift: CGFloat {
+        let unit = mascotSize.height / CGFloat(max(mascot.rows, 1))
+        let inkedRows = mascot.pattern.indices.filter { r in
+            mascot.pattern[r].contains { $0 != "." }
+        }
+        guard let top = inkedRows.first, let bottom = inkedRows.last else { return 0 }
+        let inkMidRow = (CGFloat(top) + CGFloat(bottom) + 1) / 2
+        // The row centers the frame; offset so the inked band's middle sits on center.
+        return mascotSize.height / 2 - inkMidRow * unit
     }
 
     // MARK: - Mascot bob (gentle, listening only)
@@ -396,6 +485,21 @@ private struct NudgingArrow: View {
 /// A five-bar equalizer that animates like a live meter while listening.
 /// Matches the mockup's `.eq--live` (5 bars, staggered phases). Reduced motion
 /// freezes the bars at representative resting heights.
+/// Five short, equal-height bars — the level meter at rest (armed). Same count,
+/// width and pitch as `LevelBars`, just flat and low, so it springs straight up
+/// into the equalizer when listening begins.
+private struct RestingBars: View {
+    let color: Color
+    var body: some View {
+        HStack(spacing: 1.5) {
+            ForEach(0..<5, id: \.self) { _ in
+                Capsule().fill(color).frame(width: 2, height: 5)
+            }
+        }
+        .frame(height: 14)
+    }
+}
+
 private struct LevelBars: View {
     let color: Color
     let reduce: Bool

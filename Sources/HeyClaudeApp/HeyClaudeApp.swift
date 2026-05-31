@@ -44,9 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboarding = ob
         controller.onNeedsOnboarding = { [weak ob] in ob?.show() }
 
-        // Settings dashboard owns its own window, opened from the menu.
+        // Settings dashboard owns its own window, opened from the menu and from the
+        // notch control panel (both route through `onOpenSettings`).
         let prefs = PreferencesWindowController(controller: controller)
         preferences = prefs
+        controller.onOpenSettings = { [weak prefs] in prefs?.show() }
 
         // Wake-word re-training (Settings ▸ Voice) opens onboarding's train step in
         // a dedicated retrain-only window.

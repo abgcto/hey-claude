@@ -54,6 +54,10 @@ final class AppController {
     var onRetrainRequested: (() -> Void)?
     func requestRetrain() { onRetrainRequested?() }
 
+    /// Set by the app layer to open the Settings dashboard from the notch control
+    /// panel (mirrors the menu's `Settings` item). nil before the window layer wired.
+    var onOpenSettings: (() -> Void)?
+
     private let machine = AppStateMachine()
     private let recentLog = RecentActions()
     private var audio: AudioCapture?
@@ -475,7 +479,21 @@ final class AppController {
         // (whose `Settings` scene type collides with our `Settings`).
         island.update(model,
                       mascot: MascotCatalog.byID(settings.mascotID),
-                      mascotColorHex: settings.mascotColorHex)
+                      mascotColorHex: settings.mascotColorHex,
+                      controls: islandControls())
+    }
+
+    /// The hover-panel's actions + data, rebuilt each render so it always reflects
+    /// the current target/mute state. Closures hop back to this main-actor controller.
+    private func islandControls() -> IslandControls {
+        IslandControls(
+            targets: availableTargets,
+            current: settings.preferredTarget,
+            isMuted: machine.state == .muted,
+            toggleMute: { [weak self] in self?.toggleMute() },
+            setTarget: { [weak self] in self?.setPreferredTarget($0) },
+            openSettings: { [weak self] in self?.onOpenSettings?() },
+            quit: { NSApplication.shared.terminate(nil) })
     }
 
     /// Hand-back beat after a launch attempt. The real launch already ran on the
