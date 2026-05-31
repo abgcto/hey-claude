@@ -111,7 +111,7 @@ struct MenuContentView: View {
         // One settings door: the dashboard owns launch-at-login, wake re-training,
         // target/folder, and appearance — so "Set Up…" and the launch-at-login
         // toggle are gone from the menu.
-        Button("Settings\u{2026}") {
+        Button("Settings") {
             preferences?.show()
         }
         .keyboardShortcut(",")
