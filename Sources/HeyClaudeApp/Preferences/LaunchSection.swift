@@ -53,13 +53,15 @@ struct LaunchSection: View {
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 9)
-                    .fill(selected ? PreferencesTheme.ink.opacity(0.08) : .clear))
+                    .fill(selected ? PreferencesTheme.ink.opacity(0.10) : .clear))
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
                     .stroke(selected ? PreferencesTheme.ink.opacity(0.4) : PreferencesTheme.hairStrong,
                             lineWidth: 1))
         }
         .buttonStyle(.plain)
+        // Unselected rows get the hover lift + fill; the selected row keeps its fill.
+        .dashboardHover(cornerRadius: 9, enabled: !selected)
     }
 
     /// Folder picker — same NSOpenPanel config as onboarding's `chooseFolder`.

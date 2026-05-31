@@ -70,11 +70,66 @@ struct SettingsGroup<Content: View>: View {
     }
 }
 
+extension PreferencesTheme {
+    /// Hover tint for list/nav surfaces. The mockup's 3% (`rgba(243,242,239,.03)`)
+    /// sat on a near-black *panel*; on this dashboard's true-black canvas 3% is
+    /// invisible, so it's lifted to 6% — clearly visible while still below the 10%
+    /// selected fill, preserving the hover < selected hierarchy.
+    static let hoverFill = ink.opacity(0.06)
+    /// Shared hover transition: a gentle 0.15s ease, matching the mockups' `.15s`.
+    static let hoverDuration: Double = 0.15
+    /// Hover lift, matching the mockup card's `transform: translateY(-2px)` — the
+    /// control "slips up" on hover rather than only tinting.
+    static let hoverLift: CGFloat = -2
+}
+
+/// The dashboard's hover affordance for rows, rail tabs and cells: the control
+/// slips up `hoverLift` points and takes a faint `hoverFill` tint — mirroring the
+/// mockup's `.card:hover { transform: translateY(-2px) }` plus row fill. The lift
+/// uses `.offset` (a render transform, not a layout change) so neighbors in a grid
+/// or stack never reflow. Honors Reduce Motion by dropping the animation (the end
+/// state still applies, just without the fade/slide). The host supplies its own
+/// `cornerRadius` so the highlight matches the control's shape.
+private struct HoverHighlight: ViewModifier {
+    let cornerRadius: CGFloat
+    let enabled: Bool
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var active: Bool { hovering && enabled }
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(active ? PreferencesTheme.hoverFill : .clear))
+            .offset(y: active ? PreferencesTheme.hoverLift : 0)
+            .animation(reduceMotion ? nil : .easeOut(duration: PreferencesTheme.hoverDuration),
+                       value: hovering)
+            .onHover { hovering = $0 }
+    }
+}
+
+extension View {
+    /// Adds the dashboard's hover affordance (slip-up lift + ink fill) to a control.
+    /// Place it so the fill sits *under* any selected-state background/stroke.
+    /// Pass `enabled: false` for an already-selected control so hover doesn't stack
+    /// a third tint on top of the selected fill.
+    func dashboardHover(cornerRadius: CGFloat, enabled: Bool = true) -> some View {
+        modifier(HoverHighlight(cornerRadius: cornerRadius, enabled: enabled))
+    }
+}
+
 /// The ink-filled pill button used across the dashboard (mirrors onboarding's
-/// `actionButton`): black label on `ink`, hugs its text.
+/// `actionButton`): black label on `ink`, hugs its text. On hover it slips up
+/// `hoverLift` (like the other dashboard controls) and brightens slightly toward
+/// white — a fill tint would be invisible on the already-filled `ink` pill, so the
+/// brightness lift is its equivalent of the row/cell fill.
 struct DashboardButton: View {
     let title: String
     let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(_ title: String, action: @escaping () -> Void) {
         self.title = title
         self.action = action
@@ -85,8 +140,15 @@ struct DashboardButton: View {
                 .font(PreferencesTheme.gs(13, .medium))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 20).padding(.vertical, 9)
-                .background(RoundedRectangle(cornerRadius: 9).fill(PreferencesTheme.ink))
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(PreferencesTheme.ink)
+                        .brightness(hovering ? 0.06 : 0))
         }
         .buttonStyle(.plain)
+        .offset(y: hovering ? PreferencesTheme.hoverLift : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: PreferencesTheme.hoverDuration),
+                   value: hovering)
+        .onHover { hovering = $0 }
     }
 }

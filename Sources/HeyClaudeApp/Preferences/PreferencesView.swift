@@ -56,10 +56,13 @@ struct PreferencesView: View {
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(
                         RoundedRectangle(cornerRadius: 9)
-                            .fill(tab == t ? PreferencesTheme.ink.opacity(0.08) : .clear))
+                            .fill(tab == t ? PreferencesTheme.ink.opacity(0.10) : .clear))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Hover only the unselected tabs — the active one already wears the
+                // selected fill, and stacking the hover state on top would read as a third state.
+                .dashboardHover(cornerRadius: 9, enabled: tab != t)
             }
             Spacer(minLength: 0)
         }

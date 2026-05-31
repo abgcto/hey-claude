@@ -48,13 +48,15 @@ struct AppearanceSection: View {
                 .frame(width: 64, height: 64)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(selected ? PreferencesTheme.ink.opacity(0.08) : .clear))
+                        .fill(selected ? PreferencesTheme.ink.opacity(0.10) : .clear))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(selected ? PreferencesTheme.ink : PreferencesTheme.hairStrong,
                                 lineWidth: selected ? 2 : 1))
         }
         .buttonStyle(.plain)
+        // Unselected cells get the hover lift + fill; the selected cell keeps its ring.
+        .dashboardHover(cornerRadius: 12, enabled: !selected)
         .help(m.displayName)
         .accessibilityLabel(m.displayName)
     }
@@ -69,9 +71,25 @@ struct AppearanceSection: View {
     }
 
     private func swatchButton(_ swatch: (name: String, hex: String)) -> some View {
-        // Case-insensitive compare so a lowercased persisted value still rings.
-        let selected = swatch.hex.caseInsensitiveCompare(selectedHex) == .orderedSame
-        return Button { controller.setMascotColor(hex: swatch.hex) } label: {
+        SwatchButton(
+            swatch: swatch,
+            selected: swatch.hex.caseInsensitiveCompare(selectedHex) == .orderedSame,
+            action: { controller.setMascotColor(hex: swatch.hex) })
+    }
+}
+
+/// One color swatch. Unlike rows/cells (which lift + take an ink fill on hover), a
+/// swatch is already filled with a vivid color — an ink overlay would be
+/// invisible — so it uses a subtle `scale(1.08)` instead (mockup `.sw:hover`).
+private struct SwatchButton: View {
+    let swatch: (name: String, hex: String)
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(hex: swatch.hex))
                 .frame(width: 32, height: 32)
@@ -81,6 +99,10 @@ struct AppearanceSection: View {
                                 lineWidth: selected ? 2.5 : 1))
         }
         .buttonStyle(.plain)
+        .scaleEffect(hovering ? 1.08 : 1)
+        .animation(reduceMotion ? nil : .easeOut(duration: PreferencesTheme.hoverDuration),
+                   value: hovering)
+        .onHover { hovering = $0 }
         .help(swatch.name)
         .accessibilityLabel(swatch.name)
     }
