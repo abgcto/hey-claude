@@ -11,16 +11,14 @@ struct GeneralSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PreferencesTheme.groupSpacing) {
             SettingsGroup("STARTUP") {
-                Toggle(isOn: Binding(
-                    get: { launchAtLogin },
-                    set: { on in LoginItem.setEnabled(on); launchAtLogin = LoginItem.isEnabled }
-                )) {
+                HStack(spacing: 10) {
                     Text("Launch at login")
                         .font(PreferencesTheme.body)
                         .foregroundStyle(PreferencesTheme.ink)
+                    DashboardToggle(isOn: Binding(
+                        get: { launchAtLogin },
+                        set: { on in LoginItem.setEnabled(on); launchAtLogin = LoginItem.isEnabled }))
                 }
-                .toggleStyle(.switch)
-                .tint(PreferencesTheme.ink)
             }
 
             Spacer(minLength: 0)

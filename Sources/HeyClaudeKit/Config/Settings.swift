@@ -36,6 +36,7 @@ public struct Settings: Codable, Equatable, Sendable {
     public var onboardingCompleted: Bool          // first-run wake enrollment + setup done
     public var mascotID: String                    // selected mascot (MascotCatalog id)
     public var mascotColorHex: String              // mascot body color, e.g. "#D87757"
+    public var mascotIdleAnimations: Bool          // ambient idle mascot motion (blink/breathe/gestures)
 
     public init(projectDirectory: String = NSHomeDirectory(),
                 preferredTarget: LaunchTarget = .terminal(.terminalApp),
@@ -50,7 +51,8 @@ public struct Settings: Codable, Equatable, Sendable {
                 promptCommandID: String = "claude-code",
                 onboardingCompleted: Bool = false,
                 mascotID: String = "classic",
-                mascotColorHex: String = "#D87757") {
+                mascotColorHex: String = "#D87757",
+                mascotIdleAnimations: Bool = true) {
         self.projectDirectory = projectDirectory
         self.preferredTarget = preferredTarget
         self.wakeKeywordsScore = wakeKeywordsScore
@@ -65,6 +67,7 @@ public struct Settings: Codable, Equatable, Sendable {
         self.onboardingCompleted = onboardingCompleted
         self.mascotID = mascotID
         self.mascotColorHex = mascotColorHex
+        self.mascotIdleAnimations = mascotIdleAnimations
     }
 
     /// Pre-`LaunchTarget` settings stored the default destination as a bare
@@ -126,6 +129,9 @@ public struct Settings: Codable, Equatable, Sendable {
             ?? "classic"
         self.mascotColorHex = try container.decodeIfPresent(String.self, forKey: .mascotColorHex)
             ?? "#D87757"
+        // Default ON so existing installs get the delight; system Reduce Motion still overrides.
+        self.mascotIdleAnimations = try container.decodeIfPresent(Bool.self, forKey: .mascotIdleAnimations)
+            ?? true
     }
 
     public static let `default` = Settings()

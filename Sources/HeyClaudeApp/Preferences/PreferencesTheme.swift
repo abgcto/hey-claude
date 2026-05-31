@@ -120,6 +120,33 @@ extension View {
     }
 }
 
+/// The dashboard's monochrome switch — replaces the stock macOS `Toggle`, whose
+/// system-blue track ignores `.tint` and clashes with this black+ink pane. Off:
+/// a dim `hairStrong` track with a light knob; on: an `ink` track with a black
+/// knob. Compact (34×20) to sit with the 13pt type rather than tower over it.
+struct DashboardToggle: View {
+    @Binding var isOn: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(isOn ? PreferencesTheme.ink : PreferencesTheme.hairStrong)
+                    .frame(width: 34, height: 20)
+                Circle()
+                    .fill(isOn ? .black : PreferencesTheme.ink)
+                    .frame(width: 14, height: 14)
+                    .padding(3)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isOn)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
 /// The ink-filled pill button used across the dashboard (mirrors onboarding's
 /// `actionButton`): black label on `ink`, hugs its text. On hover it slips up
 /// `hoverLift` (like the other dashboard controls) and brightens slightly toward

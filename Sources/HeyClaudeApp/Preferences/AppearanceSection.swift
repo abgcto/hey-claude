@@ -25,9 +25,29 @@ struct AppearanceSection: View {
         VStack(alignment: .leading, spacing: PreferencesTheme.groupSpacing) {
             SettingsGroup("MASCOT") { gallery }
             SettingsGroup("COLOR") { swatchRow }
+            SettingsGroup("ANIMATION") { idleToggle }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Playful animations" — ambient idle mascot motion (blink/breathe/gestures).
+    /// Persisted via the controller, hot-swapped into the live notch. System Reduce
+    /// Motion overrides it off regardless of this switch.
+    private var idleToggle: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("Playful animations")
+                    .font(PreferencesTheme.body)
+                    .foregroundStyle(PreferencesTheme.ink)
+                DashboardToggle(isOn: Binding(
+                    get: { controller.settings.mascotIdleAnimations },
+                    set: { controller.setMascotIdleAnimations($0) }))
+            }
+            Text("Subtle idle motion so the mascot feels alive in the notch. Off automatically when macOS Reduce Motion is on.")
+                .font(PreferencesTheme.caption)
+                .foregroundStyle(PreferencesTheme.inkSoft)
+        }
     }
 
     /// One tappable square per catalog mascot; the live selection wears a ring.

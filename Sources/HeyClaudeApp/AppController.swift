@@ -186,6 +186,17 @@ final class AppController {
         updateIsland()
     }
 
+    /// Toggle ambient idle mascot animations from Preferences: persist and hot-swap
+    /// the live island. Cosmetic only — no pipeline restart (see `setMascot`).
+    func setMascotIdleAnimations(_ on: Bool) {
+        guard on != settings.mascotIdleAnimations else { return }
+        var s = settings
+        s.mascotIdleAnimations = on
+        try? SettingsStore().save(s)
+        settings = s
+        updateIsland()
+    }
+
     /// Change the default working folder from Settings: persist and hot-swap the
     /// live executor in place — same reasoning as `setPreferredTarget`. The folder
     /// only changes where a command launches, not the speech models, so no restart.
@@ -480,6 +491,7 @@ final class AppController {
         island.update(model,
                       mascot: MascotCatalog.byID(settings.mascotID),
                       mascotColorHex: settings.mascotColorHex,
+                      mascotIdleAnimations: settings.mascotIdleAnimations,
                       controls: islandControls())
     }
 

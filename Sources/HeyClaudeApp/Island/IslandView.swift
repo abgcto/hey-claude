@@ -28,6 +28,9 @@ struct IslandView: View {
     /// user picks otherwise.
     var mascot: Mascot = MascotCatalog.byID("classic")
     var mascotColor: Color = Color(red: 0.847, green: 0.463, blue: 0.341)  // #D87757 clay
+    /// User preference: ambient "lives in the notch" idle motion (blink/breathe/
+    /// gestures). System Reduce Motion still overrides it off.
+    var mascotIdleAnimations: Bool = true
     /// Hover-panel actions/data. `nil` → non-interactive (onboarding). When present,
     /// hovering the band drops the control panel and clicking the mascot mutes.
     var controls: IslandControls? = nil
@@ -45,6 +48,11 @@ struct IslandView: View {
     /// Bumped each time the island enters the muted state, firing the mascot's
     /// one-shot "settle down" droop — the calm inverse of the wake pop.
     @State private var sleepTrigger = 0
+
+    /// Drives ambient idle motion (randomized blink + gestures) while armed.
+    @State private var idle = MascotIdleDriver()
+    /// Toggled to run the continuous breathing scale while idle is active.
+    @State private var breathing = false
 
     /// Hover-driven: the control panel is dropped below the notch.
     @State private var isExpanded = false
@@ -142,6 +150,33 @@ struct IslandView: View {
             .onPreferenceChange(PanelHeightKey.self) { onPanelHeight?($0) }
             // A transient state (wake fired, launching, failure) must close the panel.
             .onChange(of: model.visual) { _, _ in if isExpanded && !canExpand { collapseNow() } }
+            // Start/stop ambient idle motion as the gate changes (armed ⇄ other,
+            // preference flip, Reduce Motion change).
+            .onAppear { syncIdle() }
+            .onChange(of: idleActive) { _, _ in syncIdle() }
+    }
+
+    // MARK: - Idle "lives in the notch" motion
+
+    /// Idle motion runs ONLY when armed (.idle), the user enabled it, and the
+    /// system isn't in Reduce Motion. Any false → the driver rests at identity.
+    private var idleActive: Bool {
+        model.visual == .idle && mascotIdleAnimations && !reduceMotion
+    }
+
+    /// Only `"O"`-eye mascots can blink; the rest skip blink (still do gestures).
+    private var canBlink: Bool { mascot.pattern.joined().contains("O") }
+
+    /// Slow continuous breath while active; a brief settle when it stops.
+    private var breatheAnimation: Animation? {
+        idleActive ? .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
+                   : .easeInOut(duration: 0.4)
+    }
+
+    /// Push the current gate into the driver + breathing flag.
+    private func syncIdle() {
+        idle.update(active: idleActive, canBlink: canBlink)
+        breathing = idleActive
     }
 
     /// Always the notch strip (mascot · camera · compact content). Reveal states
@@ -243,8 +278,18 @@ struct IslandView: View {
         HStack(spacing: 0) {
             // Left of the camera: the mascot sits CLOSE to the notch (small inner
             // gap), leaving more padding on the outer side — not dead-centered.
-            MascotView(mascot: mascot, bodyColor: isMuted ? mutedMascot : mascotColor)
+            MascotView(mascot: mascot, bodyColor: isMuted ? mutedMascot : mascotColor,
+                       eyesClosed: idle.blinking)
                 .frame(width: mascotSize.width, height: mascotSize.height)
+                // Idle "lives in the notch" motion (armed only): randomized one-shot
+                // gestures (driver-animated) plus a continuous breathing scale. Both
+                // rest at identity when idle is inactive, so they compose with the
+                // wake/sleep/bob animations below.
+                .scaleEffect(x: idle.transform.scaleX, y: idle.transform.scaleY, anchor: .bottom)
+                .rotationEffect(.degrees(idle.transform.rotation), anchor: .bottom)
+                .offset(x: idle.transform.offsetX, y: idle.transform.offsetY)
+                .scaleEffect(y: breathing ? 1.03 : 1.0, anchor: .bottom)
+                .animation(breatheAnimation, value: breathing)
                 .offset(y: mascotBob + mascotCenterShift)
                 .animation(mascotBobAnimation, value: mascotBobActive)
                 // Resume from mute → the mascot pops awake: a quick stretch-up,

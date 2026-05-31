@@ -86,4 +86,22 @@ final class SettingsStoreTests: XCTestCase {
         let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
         XCTAssertEqual(s.commands.first { $0.id == "claude-code" }?.editorIntegration, .claudeCode)
     }
+
+    func test_saveThenLoad_roundTripsMascotIdleAnimations() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SettingsStore(fileURL: url)
+        var s = Settings.default
+        s.mascotIdleAnimations = false
+        try store.save(s)
+        XCTAssertEqual(store.load().mascotIdleAnimations, false)
+        XCTAssertEqual(store.load(), s)
+    }
+
+    func test_decodingBlob_withoutMascotIdleAnimations_defaultsTrue() throws {
+        // A settings file from before the idle-animation toggle existed → default ON.
+        let legacy = #"{"projectDirectory":"/tmp","preferredTerminal":"Terminal","wakeKeywordsScore":2,"wakeKeywordsThreshold":0.25,"cooldownSeconds":2,"claudeExecutable":"claude"}"#
+        let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
+        XCTAssertTrue(s.mascotIdleAnimations)
+    }
 }

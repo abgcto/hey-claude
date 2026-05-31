@@ -158,6 +158,7 @@ final class NotchIslandPanel {
     func update(_ model: IslandModel,
                 mascot: Mascot = MascotCatalog.byID("classic"),
                 mascotColorHex: String = "#D87757",
+                mascotIdleAnimations: Bool = true,
                 controls: IslandControls? = nil) {
         guard let screen = Self.notchScreen() else { panel.orderOut(nil); return }
         let notch = screen.notchSize
@@ -183,6 +184,7 @@ final class NotchIslandPanel {
             VStack(spacing: 0) {
                 IslandView(model: model, topInset: notch.height, notchWidth: notch.width, bloom: bloom,
                            mascot: mascot, mascotColor: Color(hex: mascotColorHex),
+                           mascotIdleAnimations: mascotIdleAnimations,
                            controls: controls,
                            onPanelHeight: { [weak self] h in self?.host.panelHeight = h })
                 Spacer(minLength: 0)

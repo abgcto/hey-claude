@@ -12,6 +12,9 @@ import HeyClaudeKit
 struct MascotView: View {
     var mascot: Mascot
     var bodyColor: Color = Color(red: 0.847, green: 0.463, blue: 0.341)  // #D87757 clay
+    /// Blink: when true, `"O"` eyes render as a thin closed-lid dash instead of the
+    /// open dot. Mascots without `"O"` eyes are unaffected (they don't blink).
+    var eyesClosed: Bool = false
 
     /// Near-black eye / chevron ink (`#0a0a0a`).
     private static let eyeColor = Color(red: 0.04, green: 0.04, blue: 0.04)
@@ -33,6 +36,15 @@ struct MascotView: View {
             // Pixel grid. +0.5 oversize avoids hairline seams between cells.
             for (r, row) in mascot.pattern.enumerated() {
                 for (c, ch) in row.enumerated() {
+                    // Blink: an eye cell becomes a thin horizontal lid dash.
+                    if ch == "O", eyesClosed {
+                        let h = unit * 0.28
+                        let lid = CGRect(x: CGFloat(c) * unit,
+                                         y: CGFloat(r) * unit + (unit - h) / 2,
+                                         width: unit + 0.5, height: h)
+                        ctx.fill(Path(lid), with: .color(Self.eyeColor))
+                        continue
+                    }
                     let color: Color
                     switch ch {
                     case "#": color = bodyColor
