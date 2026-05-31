@@ -33,10 +33,27 @@ struct IslandView: View {
     /// Drives the bloom-in entrance.
     @State private var entered = false
 
+    /// Bumped each time the island leaves the muted state, firing the mascot's
+    /// one-shot "wake up" squash-and-stretch (see `notchRow`).
+    @State private var wakeTrigger = 0
+
+    /// Bumped each time the island enters the muted state, firing the mascot's
+    /// one-shot "settle down" droop — the calm inverse of the wake pop.
+    @State private var sleepTrigger = 0
+
     // Skin (the locked palette).
     private let coral = Color(red: 1.0, green: 0.541, blue: 0.420)    // #ff8a6b
     private let violet = Color(red: 0.482, green: 0.361, blue: 1.0)   // #7b5cff
     private let inkText = Color(red: 0.953, green: 0.949, blue: 0.937) // #f3f2ef
+
+    /// The dimmed gray worn by the muted `mic.slash.fill` glyph — thin strokes, so
+    /// it carries the light tint without reading as washed out.
+    private var mutedTint: Color { inkText.opacity(0.7) }
+
+    /// The muted mascot body gray. Darker than `mutedTint` on purpose: the mascot is
+    /// a solid fill, so the same tint would read much lighter than the thin mic
+    /// glyph — this lower value balances their visual weight.
+    private var mutedMascot: Color { inkText.opacity(0.4) }
 
     // MARK: - Per-state geometry
 
@@ -88,8 +105,10 @@ struct IslandView: View {
             // rounded bottom edge as the band grows open.
             .clipShape(NotchShape(topCornerRadius: 6, bottomCornerRadius: 10))
             .compositingGroup()
-            // Paused dims hard (~60%); muted is only slightly dimmed.
-            .opacity(model.dimmed ? 0.6 : (isMuted ? 0.78 : 1))
+            // Paused dims the whole band (~60%). Muted keeps the band fully black —
+            // its "off" reading comes from the gray mascot + mic glyph tint, not from
+            // washing the background out against the desktop.
+            .opacity(model.dimmed ? 0.6 : 1)
             .opacity(model.hidden ? 0 : 1)
             // Empty-shell entrance: the placeholder blooms open — widening from a
             // sliver (with a slight overshoot) the first time it appears in the
@@ -202,10 +221,54 @@ struct IslandView: View {
         HStack(spacing: 0) {
             // Left of the camera: the mascot sits CLOSE to the notch (small inner
             // gap), leaving more padding on the outer side — not dead-centered.
-            MascotView(mascot: mascot, bodyColor: mascotColor)
-                .frame(width: 16, height: 10)
-                .offset(y: mascotBob)
+            MascotView(mascot: mascot, bodyColor: isMuted ? mutedMascot : mascotColor)
+                .frame(width: mascotSize.width, height: mascotSize.height)
+                .offset(y: mascotBob + mascotBaselineShift)
                 .animation(mascotBobAnimation, value: mascotBobActive)
+                // Resume from mute → the mascot pops awake: a quick stretch-up,
+                // squash, and bouncy settle (anchored at its feet) with a small hop,
+                // so unmuting reads as the mascot coming back to life. One-shot,
+                // driven by `wakeTrigger`; skipped under reduced motion.
+                .keyframeAnimator(initialValue: MascotWake(), trigger: wakeTrigger) { view, w in
+                    view.scaleEffect(w.scale, anchor: .bottom).offset(y: w.lift)
+                } keyframes: { _ in
+                    KeyframeTrack(\.scale) {
+                        SpringKeyframe(1.18, duration: 0.16, spring: .snappy)
+                        SpringKeyframe(0.92, duration: 0.12, spring: .snappy)
+                        SpringKeyframe(1.06, duration: 0.12)
+                        SpringKeyframe(1.0, duration: 0.20, spring: .bouncy)
+                    }
+                    KeyframeTrack(\.lift) {
+                        CubicKeyframe(-3, duration: 0.18)
+                        CubicKeyframe(0, duration: 0.42)
+                    }
+                }
+                // Mute → the mascot settles: a soft squash (widen + shorten, anchored
+                // at its feet) with a small sink, then an unhurried ease back. Slower
+                // and bounce-free so it reads as powering down, not popping. One-shot.
+                .keyframeAnimator(initialValue: MascotSleep(), trigger: sleepTrigger) { view, s in
+                    view.scaleEffect(x: s.scaleX, y: s.scaleY, anchor: .bottom).offset(y: s.sink)
+                } keyframes: { _ in
+                    KeyframeTrack(\.scaleY) {
+                        CubicKeyframe(0.84, duration: 0.22)
+                        CubicKeyframe(1.0, duration: 0.50)
+                    }
+                    KeyframeTrack(\.scaleX) {
+                        CubicKeyframe(1.08, duration: 0.22)
+                        CubicKeyframe(1.0, duration: 0.50)
+                    }
+                    KeyframeTrack(\.sink) {
+                        CubicKeyframe(1.5, duration: 0.22)
+                        CubicKeyframe(0, duration: 0.50)
+                    }
+                }
+                .onChange(of: isMuted) { _, nowMuted in
+                    // Fire on each toggle, only when motion is allowed: mute → settle,
+                    // resume → wake. The two animators rest at identity when idle, so
+                    // stacking them never conflicts.
+                    guard !reduceMotion else { return }
+                    if nowMuted { sleepTrigger += 1 } else { wakeTrigger += 1 }
+                }
                 .padding(.trailing, innerGap)
                 .frame(width: sideArea, alignment: .trailing)
             // The camera gap — kept clear (the physical notch sits here).
@@ -243,16 +306,14 @@ struct IslandView: View {
             LevelBars(color: coral, reduce: reduceMotion)
 
         case .muted:
-            // White mic glyph crossed by a coral diagonal slash (mockup's
-            // slashed-mic SVG): a plain mic + an explicit coral stroke.
-            ZStack {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(inkText.opacity(0.7))
-                MutedSlash(color: coral)
-                    .frame(width: 15, height: 15)
-            }
-            .frame(width: 15, height: 15)
+            // Native slashed-mic SF Symbol — mic + slash as one Apple glyph,
+            // dimmed to read as a calm "off" state.
+            Image(systemName: "mic.slash.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(mutedTint)
+                // Mirror the mascot's 16px footprint so the left (mascot) and right
+                // (mic) zones have symmetric inner + outer padding about the notch.
+                .frame(width: 16)
 
         case .paused:
             // Compact pause glyph only — the label wouldn't fit the snug section;
@@ -261,6 +322,26 @@ struct IslandView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(violet)
         }
+    }
+
+    // MARK: - Mascot sizing
+
+    /// The mascot slot width (left of the camera). Height scales with the grid's
+    /// aspect so every mascot's cells render at the SAME size — a tall grid (e.g.
+    /// Birthday's candle) grows the frame upward rather than shrinking the body to
+    /// fit a fixed box. Standard 10-row mascots resolve to the original 16×10.
+    private static let mascotSlotW: CGFloat = 16
+    private var mascotSize: CGSize {
+        let h = Self.mascotSlotW * CGFloat(mascot.rows) / CGFloat(max(mascot.cols, 1))
+        return CGSize(width: Self.mascotSlotW, height: h)
+    }
+
+    /// Keep every mascot's feet on the 10-row classic baseline. The row centers the
+    /// frame vertically, so a taller frame would otherwise sink the body; shifting
+    /// up by half the surplus height pins the bottom and sends the extra room up.
+    private var mascotBaselineShift: CGFloat {
+        let classicH = Self.mascotSlotW * 10 / 16
+        return -(mascotSize.height - classicH) / 2
     }
 
     // MARK: - Mascot bob (gentle, listening only)
@@ -280,22 +361,17 @@ struct IslandView: View {
 
 // MARK: - Helper views
 
-/// The coral diagonal slash crossing the muted mic, top-left to bottom-right.
-/// Matches the mockup's `<line x1="3" y1="3" x2="21" y2="21" stroke="#ff8a6b">`.
-private struct MutedSlash: View {
-    var color: Color
-    var body: some View {
-        GeometryReader { geo in
-            Path { p in
-                let inset = geo.size.width * 0.12
-                p.move(to: CGPoint(x: inset, y: inset))
-                p.addLine(to: CGPoint(x: geo.size.width - inset,
-                                      y: geo.size.height - inset))
-            }
-            .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-        }
-        .allowsHitTesting(false)
-    }
+/// Animatable transform for the mascot's one-shot "wake up" on resume.
+private struct MascotWake {
+    var scale: CGFloat = 1
+    var lift: CGFloat = 0
+}
+
+/// Animatable transform for the mascot's one-shot "settle down" on mute.
+private struct MascotSleep {
+    var scaleX: CGFloat = 1
+    var scaleY: CGFloat = 1
+    var sink: CGFloat = 0
 }
 
 /// The launching arrow that gently nudges right (mockup's `arrow--nudge`) to
