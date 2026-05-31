@@ -30,6 +30,12 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
                            backing: .buffered, defer: false)
         win.title = "Hey Claude Settings"
         win.backgroundColor = .black
+        // The notch panel toggles its own click-through from `.mouseMoved` monitors.
+        // A key window that doesn't emit mouse-moved events freezes those monitors,
+        // leaving the panel stuck catching clicks over its top region (the dashboard
+        // nav rail). Emitting them keeps the click-through tracking live so dashboard
+        // clicks land. (Without this, "Launch" tab clicks were swallowed.)
+        win.acceptsMouseMovedEvents = true
         // Code-created windows default to releasing on close; we hold a strong
         // ref for reuse, so disable that (a released window would dangle).
         win.isReleasedWhenClosed = false
