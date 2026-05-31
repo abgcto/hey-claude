@@ -439,11 +439,16 @@ final class AppController {
         }
     }
 
-    /// Sticky user mute. `AudioCapture` enforces the gate on its own queue, so
-    /// the controller only flips the flag and reflects it in `AppState`.
+    /// Sticky user mute. Muting **releases the microphone** (engine stops, OS mic
+    /// indicator goes off); unmuting re-acquires it. `setMuted` returns the mic's
+    /// resulting live state, so a failed unmute restart keeps us truthfully muted
+    /// rather than showing an "armed" mic the OS never re-granted. With no live
+    /// pipeline (`audio == nil`) we honor the request optimistically so the next
+    /// boot reflects the user's intent.
     func toggleMute() {
-        userMuted.toggle()
-        audio?.setMuted(userMuted)
+        let wantMuted = !userMuted
+        let isLive = audio?.setMuted(wantMuted) ?? !wantMuted
+        userMuted = !isLive
         emit(userMuted ? .muted : .unmuted)
     }
 

@@ -8,4 +8,8 @@ import os
 public enum Log {
     /// Command launch outcomes — failures logged at `.error`.
     public static let launch = Logger(subsystem: "com.heyclaude.app", category: "launch")
+
+    /// Microphone capture lifecycle — e.g. a mute→unmute restart that fails to
+    /// re-acquire the input device (would otherwise leave the app silently deaf).
+    public static let audio = Logger(subsystem: "com.heyclaude.app", category: "audio")
 }
