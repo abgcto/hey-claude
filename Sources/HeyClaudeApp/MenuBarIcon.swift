@@ -1,23 +1,29 @@
 import AppKit
 import HeyClaudeKit
 
-/// Builds the menu-bar `NSImage` for a given `AppState`. Monochrome TEMPLATE at
-/// rest (so it auto-adapts to light/dark/tinted menu bars); a brief NON-template
-/// coral accent only during `.hot`/`.working` so the active moment reads.
+/// Builds the menu-bar `NSImage` for a given `AppState`.
+///
+/// The glyph echoes the app icon's "Crown Meter": the pixel Claude mascot wearing
+/// a small 3-bar level-meter crown (a center-aligned waveform). It's a RESTING
+/// brand mark — it deliberately does not animate or recolor per state (live state
+/// lives in the notch island). Only two persistent states alter it: `off` dims the
+/// whole glyph, and `muted` knocks a diagonal slash through it.
+///
+/// Monochrome TEMPLATE: macOS tints the alpha shape to match light/dark/tinted
+/// menu bars, so everything is drawn in a single opaque ink and dimming is done by
+/// lowering the fill's alpha (which the template tint then carries through).
 enum MenuBarIcon {
-    /// Direction A "The Seam" coral accent, used only for the active states.
-    static let accent = NSColor(red: 1.0, green: 0.54, blue: 0.42, alpha: 1.0)
-
     static func image(for state: AppState) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let img = NSImage(size: size, flipped: false) { rect in
-            drawBars(in: rect, state: state)
+            // `off` (no models / mic denied) reads as a dimmed glyph; everything
+            // else is the full-strength brand mark.
+            NSColor(white: 0, alpha: state == .off ? 0.4 : 1).set()
+            drawMascot(in: rect)
+            if state == .muted { knockOutSlash(in: rect) }
             return true
         }
-        // Template for the calm states (system tints them); the accent states
-        // draw their own coral and must opt out of template rendering.
-        img.isTemplate = (state == .armed || state == .muted || state == .paused || state == .off)
-        // .failed draws its own coral accent → must opt out of template tinting (below).
+        img.isTemplate = true
         img.accessibilityDescription = description(for: state)
         return img
     }
@@ -34,44 +40,43 @@ enum MenuBarIcon {
         }
     }
 
-    /// Three vertical bars (reads as a level meter and a stylized "C").
-    private static func drawBars(in rect: NSRect, state: AppState) {
-        let color: NSColor
-        switch state {
-        case .hot, .working, .failed: color = accent   // .failed: brief attention tint
-        case .off:           color = NSColor.labelColor.withAlphaComponent(0.4)
-        case .paused:        color = NSColor.labelColor.withAlphaComponent(0.45)
-        default:             color = NSColor.labelColor
+    /// The mascot (rounded body + two eye knockouts) crowned by a 3-bar meter.
+    /// Coordinates are points in an 18×18 canvas, origin bottom-left.
+    private static func drawMascot(in rect: NSRect) {
+        // Body with eye holes: append the body then the eyes and fill even-odd so
+        // the inner eye rects punch through as transparent knockouts.
+        let body = NSBezierPath()
+        body.appendRoundedRect(NSRect(x: 3.5, y: 2.8, width: 11, height: 6.8),
+                               xRadius: 1.8, yRadius: 1.8)
+        for eyeX in [6.15, 10.15] as [CGFloat] {
+            body.appendRoundedRect(NSRect(x: eyeX, y: 6.6, width: 1.7, height: 2.2),
+                                   xRadius: 0.6, yRadius: 0.6)
         }
-        color.set()
+        body.windingRule = .evenOdd
+        body.fill()
 
-        let n = 3
-        let barW: CGFloat = 2.4
-        let gap: CGFloat = 2.2
-        let totalW = CGFloat(n) * barW + CGFloat(n - 1) * gap
-        var x = rect.midX - totalW / 2
-        let base: [CGFloat] = [0.45, 0.85, 0.6]
-        for i in 0..<n {
-            let h = rect.height * base[i]
-            let barRect = NSRect(x: x, y: rect.midY - h / 2, width: barW, height: h)
-            let path = NSBezierPath(roundedRect: barRect, xRadius: 1, yRadius: 1)
-            path.lineWidth = 1.4
-            if state == .armed {
-                path.stroke()   // resting reads as a hollow, calm glyph
-            } else {
-                path.fill()
-            }
-            x += barW + gap
+        // Crown: 3 capsule bars, center-aligned on a shared midline (a small
+        // waveform, not a bottom-aligned mountain) — matching the app icon's meter.
+        let midline: CGFloat = 13.2
+        let barW: CGFloat = 2
+        let bars: [(x: CGFloat, h: CGFloat)] = [(5.6, 4.4), (8.0, 6.4), (10.4, 3.2)]
+        for bar in bars {
+            let r = NSRect(x: bar.x, y: midline - bar.h / 2, width: barW, height: bar.h)
+            NSBezierPath(roundedRect: r, xRadius: barW / 2, yRadius: barW / 2).fill()
         }
-        if state == .muted { drawSlash(in: rect) }
     }
 
-    private static func drawSlash(in rect: NSRect) {
-        let p = NSBezierPath()
-        p.move(to: NSPoint(x: rect.minX + 2, y: rect.minY + 2))
-        p.line(to: NSPoint(x: rect.maxX - 2, y: rect.maxY - 2))
-        p.lineWidth = 1.6
-        NSColor.labelColor.set()
-        p.stroke()
+    /// Muted: clear a diagonal gutter (top-left → bottom-right) through the glyph so
+    /// it reads as "crossed out / off", consistent with the island's slashed mic.
+    private static func knockOutSlash(in rect: NSRect) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current?.compositingOperation = .clear
+        let slash = NSBezierPath()
+        slash.move(to: NSPoint(x: rect.minX + 3, y: rect.maxY - 3))
+        slash.line(to: NSPoint(x: rect.maxX - 3, y: rect.minY + 3))
+        slash.lineWidth = 2.4
+        slash.lineCapStyle = .round
+        slash.stroke()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
