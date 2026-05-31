@@ -53,7 +53,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // a dedicated retrain-only window.
         let rt = RetrainWindowController(controller: controller)
         retrain = rt
-        controller.onRetrainRequested = { [weak rt] in rt?.show() }
+        // Open retrain over the Settings window (it's launched from Settings ▸ Voice)
+        // so it lands at the same position and size instead of re-centering elsewhere.
+        controller.onRetrainRequested = { [weak rt, weak prefs] in
+            rt?.show(matchingFrame: prefs?.currentFrame)
+        }
 
         // No menu-bar status item. The notch island is the app's only, always-on
         // surface — it carries mute, target, Recent, failures, mic recovery, Settings

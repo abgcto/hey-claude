@@ -11,6 +11,11 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private let controller: AppController
     private var window: NSWindow?
 
+    /// The live window frame (position + size), or nil before first show / after the
+    /// window is gone. The retrain window opens at this frame so re-training reads as
+    /// the same panel rather than a differently-sized window appearing elsewhere.
+    var currentFrame: NSRect? { window?.frame }
+
     init(controller: AppController) {
         self.controller = controller
         super.init()

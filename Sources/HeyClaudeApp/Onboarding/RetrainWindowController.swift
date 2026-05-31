@@ -20,10 +20,14 @@ final class RetrainWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    func show() {
+    /// `matchingFrame`: when supplied (the live Settings window frame), open exactly
+    /// over it — same position and size — so re-training reads as the Settings panel
+    /// drilling in rather than a new window popping up. Falls back to centering.
+    func show(matchingFrame: NSRect? = nil) {
         controller.suspendForOnboarding()   // free the mic tap for the recorder
 
         if let window, let model {
+            if let matchingFrame { window.setFrame(matchingFrame, display: false) }
             NSApp.setActivationPolicy(.regular)
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -48,7 +52,7 @@ final class RetrainWindowController: NSObject, NSWindowDelegate {
         win.isReleasedWhenClosed = false
         win.contentView = host
         win.delegate = self
-        win.center()
+        if let matchingFrame { win.setFrame(matchingFrame, display: false) } else { win.center() }
         window = win
 
         NSApp.setActivationPolicy(.regular)
