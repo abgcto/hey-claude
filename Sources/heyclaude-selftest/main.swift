@@ -309,6 +309,37 @@ func probeBoostSweep() -> Bool {
     return true
 }
 
+// MARK: - Threshold sweep (wake-sensitivity slider verification)
+
+/// Proves the `keywordsThreshold` parameter — what the Settings ▸ Voice
+/// sensitivity slider sets — actually gates firing. Sweeps from eager (low) to
+/// strict (high) at the shipped boost; the positive clip should fire while the
+/// gate is below its achieved score and stop once the gate climbs past it. The
+/// shaded band [0.08 … 0.30] marks the slider's live range (see VoiceSection).
+func probeThresholdSweep() -> Bool {
+    print("PROBE wake threshold sweep (score=2.0; slider range 0.08…0.30)")
+    let clips = ["hey_claude_only", "negative_speech"]
+    let loaded = clips.compactMap { name -> (String, [Float])? in
+        guard let s = try? AudioSamples.load(fixture(name)) else { return nil }
+        return (name, s)
+    }
+    print("  thresh | " + loaded.map { $0.0 }.joined(separator: "  "))
+    for thresh in [Float(0.08), 0.15, 0.25, 0.30, 0.50, 0.70, 0.90] {
+        let band = (thresh >= 0.08 && thresh <= 0.30) ? "*" : " "
+        var line = "  \(String(format: "%.2f", thresh))\(band)  |"
+        for (_, s) in loaded {
+            guard let e = try? WakeWordEngine(
+                modelDir: kwsDir, keywordsFile: keywordsFile,
+                keywordsThreshold: thresh, keywordsScore: 2.0) else {
+                line += " ERR"; continue
+            }
+            line += " \(e.detects(in: s) ? "FIRE" : "----")"
+        }
+        print(line)
+    }
+    return true
+}
+
 // Mirrors ParakeetTranscriberTests.test_transcribesPromptClip.
 func checkTranscribe() -> Bool {
     run("asr.transcribesPromptClip") { c in
@@ -532,6 +563,7 @@ func main() -> Int32 {
     maybe("enroll", probeEnroll)
     maybe("asr-only", probeTranscribeOnly)
     maybe("boost-sweep", probeBoostSweep)
+    maybe("threshold-sweep", probeThresholdSweep)
     maybe("asr", checkTranscribe)
     maybe("route", probeRoute)
     maybe("default-route", probeDefaultRouting)

@@ -57,7 +57,13 @@ final class AppController {
     private let machine = AppStateMachine()
     private let recentLog = RecentActions()
     private var audio: AudioCapture?
-    private var wake: WakeWordEngine?
+    /// Live wake engine, boxed so a sensitivity change can hot-swap it without
+    /// rebooting the pipeline (which would also reload the ~631MB transcriber).
+    /// See `WakeWordEngineHolder`.
+    private var wake: WakeWordEngineHolder?
+    /// Serial queue for rebuilding the wake engine off the main actor on a
+    /// sensitivity change — keeps rapid slider releases ordered and off the UI.
+    private let wakeRebuildQueue = DispatchQueue(label: "heyclaude.wake-rebuild")
     private var transcriber: ParakeetTranscriber?
     private var capture: CaptureSession?
     private var voice: VoiceSession?
@@ -188,10 +194,37 @@ final class AppController {
         executor?.swap(makeExecutor())
     }
 
-    /// Change wake sensitivity from Settings. Unlike target/folder (which hot-swap
-    /// the executor), this *must* restart the pipeline: `WakeWordEngine` bakes the
-    /// threshold in at construction and can't hot-swap it — the restart cost is
-    /// unavoidable here, so don't "simplify" it to match the other two setters.
+    /// Builds a `WakeWordEngine` from the current settings + resolved keyword file.
+    /// `nonisolated` so it can run off the main actor (the KWS model load is ~19MB
+    /// of ONNX — small, but no reason to load it on the UI thread). Pure inputs,
+    /// no `self` state mutated, so it's concurrency-safe to call from a queue.
+    nonisolated private static func makeWakeEngine(modelsDir: URL, threshold: Float,
+                                                   score: Float) throws -> WakeWordEngine {
+        let keywordsFile = KeywordStore().urlIfPresent
+            ?? modelsDir.appendingPathComponent("keywords.txt")
+        return try WakeWordEngine(
+            modelDir: modelsDir.appendingPathComponent("sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
+            keywordsFile: keywordsFile,
+            keywordsThreshold: threshold,
+            keywordsScore: score)
+    }
+
+    /// Instance convenience: build a wake engine from the live settings. Used at
+    /// pipeline boot (on main, the load is part of startup) and indirectly by the
+    /// off-main rebuild path in `setWakeThreshold`.
+    private func makeWakeEngine(modelsDir: URL) throws -> WakeWordEngine {
+        try Self.makeWakeEngine(modelsDir: modelsDir,
+                                threshold: settings.wakeKeywordsThreshold,
+                                score: settings.wakeKeywordsScore)
+    }
+
+    /// Change wake sensitivity from Settings. Unlike target/folder (which only
+    /// hot-swap the executor), the threshold is baked into the sherpa spotter at
+    /// construction, so a new `WakeWordEngine` is required. But it does NOT need a
+    /// full pipeline restart — that would also reload the ~631MB transcriber, which
+    /// the threshold doesn't touch (the old ~1s freeze). Instead rebuild only the
+    /// ~19MB wake engine off the main actor and `swap` it into the live holder; the
+    /// transcriber, capture, voice and executor all keep running.
     /// Lower threshold = more eager (more sensitive).
     func setWakeThreshold(_ threshold: Float) {
         guard threshold != settings.wakeKeywordsThreshold else { return }
@@ -199,7 +232,22 @@ final class AppController {
         s.wakeKeywordsThreshold = threshold
         try? SettingsStore().save(s)
         settings = s
-        if didStart { restartPipeline() }
+
+        // Not running yet (or no models) → nothing live to swap; next start() picks
+        // up the saved threshold.
+        guard didStart, let holder = wake, let modelsDir = resolveModelsDir() else { return }
+        let score = s.wakeKeywordsScore
+        wakeRebuildQueue.async {
+            // Off-main: build the new engine, then swap atomically. On failure, keep
+            // the old engine — a rebuild error must not leave the app deaf.
+            guard let engine = try? Self.makeWakeEngine(modelsDir: modelsDir,
+                                                        threshold: threshold, score: score)
+            else {
+                Log.launch.error("wake rebuild failed; keeping previous sensitivity engine")
+                return
+            }
+            holder.swap(engine)
+        }
     }
 
     /// Re-train the wake word from Settings: persist the freshly enrolled keyword
@@ -263,14 +311,7 @@ final class AppController {
         self.executor = executor
 
         do {
-            // Prefer the per-user keyword from enrollment; fall back to bundled.
-            let keywordsFile = KeywordStore().urlIfPresent
-                ?? modelsDir.appendingPathComponent("keywords.txt")
-            let wake = try WakeWordEngine(
-                modelDir: modelsDir.appendingPathComponent("sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
-                keywordsFile: keywordsFile,
-                keywordsThreshold: settings.wakeKeywordsThreshold,
-                keywordsScore: settings.wakeKeywordsScore)
+            let wake = WakeWordEngineHolder(try makeWakeEngine(modelsDir: modelsDir))
             let transcriber = try ParakeetTranscriber(
                 modelDir: modelsDir.appendingPathComponent("sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"))
             self.wake = wake
