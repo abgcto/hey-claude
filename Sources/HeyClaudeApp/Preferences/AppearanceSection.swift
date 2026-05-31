@@ -44,6 +44,9 @@ struct AppearanceSection: View {
                     get: { controller.settings.mascotIdleAnimations },
                     set: { controller.setMascotIdleAnimations($0) }))
             }
+            // Merge label + switch into one VoiceOver element ("Playful animations,
+            // On, switch") since the visible label lives outside the toggle.
+            .accessibilityElement(children: .combine)
             Text("Subtle idle motion so the mascot feels alive in the notch. Off automatically when macOS Reduce Motion is on.")
                 .font(PreferencesTheme.caption)
                 .foregroundStyle(PreferencesTheme.inkSoft)

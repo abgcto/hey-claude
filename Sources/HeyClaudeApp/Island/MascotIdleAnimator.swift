@@ -90,8 +90,20 @@ final class MascotIdleDriver {
     /// Idempotent start/stop. `canBlink` is false for mascots without `"O"` eyes
     /// (they still do the transform gestures, just no blink).
     func update(active: Bool, canBlink: Bool) {
+        let blinkEnabled = canBlink && !self.canBlink
+        let blinkDisabled = !canBlink && self.canBlink
         self.canBlink = canBlink
-        guard active != self.active else { return }
+        guard active != self.active else {
+            // Already running: reconcile the blink loop if the mascot's blink
+            // capability changed under us (e.g. switching from a no-"O"-eye mascot
+            // like Happy to Classic while idle). Without this the new mascot would
+            // not blink until the next armed cycle.
+            if active {
+                if blinkEnabled, blinkWork == nil { scheduleBlink() }
+                if blinkDisabled { stopBlink() }
+            }
+            return
+        }
         self.active = active
         if active {
             scheduleGesture()
@@ -99,6 +111,12 @@ final class MascotIdleDriver {
         } else {
             stop()
         }
+    }
+
+    private func stopBlink() {
+        blinkWork?.cancel();  blinkWork = nil
+        reopenWork?.cancel(); reopenWork = nil
+        blinking = false
     }
 
     private func stop() {
@@ -109,7 +127,7 @@ final class MascotIdleDriver {
         withAnimation(.easeOut(duration: 0.3)) { transform = .identity }
     }
 
-    // MARK: gestures (~every 20–40s)
+    // MARK: gestures (~every 2–4s)
 
     private func scheduleGesture() {
         let work = DispatchWorkItem { [weak self] in self?.fireGesture() }
@@ -139,7 +157,7 @@ final class MascotIdleDriver {
         }
     }
 
-    // MARK: blink (~every 8–16s)
+    // MARK: blink (~every 1.5–3s)
 
     private func scheduleBlink() {
         guard canBlink else { return }

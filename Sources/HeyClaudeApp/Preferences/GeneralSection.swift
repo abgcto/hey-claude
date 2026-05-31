@@ -19,6 +19,7 @@ struct GeneralSection: View {
                         get: { launchAtLogin },
                         set: { on in LoginItem.setEnabled(on); launchAtLogin = LoginItem.isEnabled }))
                 }
+                .accessibilityElement(children: .combine)   // one VO element: label + switch
             }
 
             Spacer(minLength: 0)

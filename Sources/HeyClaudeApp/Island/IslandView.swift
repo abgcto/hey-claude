@@ -161,6 +161,9 @@ struct IslandView: View {
             // preference flip, Reduce Motion change).
             .onAppear { syncIdle() }
             .onChange(of: idleActive) { _, _ in syncIdle() }
+            // A mascot swap can change blink capability ("O"-eye or not) without
+            // changing `idleActive`; re-sync so the driver picks up the new mascot.
+            .onChange(of: mascot.id) { _, _ in syncIdle() }
     }
 
     // MARK: - Idle "lives in the notch" motion

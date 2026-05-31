@@ -143,7 +143,11 @@ struct DashboardToggle: View {
         }
         .buttonStyle(.plain)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isOn)
-        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        // Switch semantics for VoiceOver (the visual label is a sibling `Text`,
+        // merged in by the call site's `.accessibilityElement(children: .combine)`).
+        // `.isToggle` makes VO read the on/off value + announce it as a switch.
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(isOn ? "On" : "Off")
     }
 }
 
