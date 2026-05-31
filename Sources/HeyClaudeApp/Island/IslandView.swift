@@ -123,7 +123,14 @@ struct IslandView: View {
             // Clip to the same shape so the reveal line glides into view under the
             // rounded bottom edge as the band grows open.
             .clipShape(NotchShape(topCornerRadius: 6, bottomCornerRadius: 10))
-            .compositingGroup()
+            // `compositingGroup` forces the whole band to render offscreen so the dim
+            // opacity fades it as ONE unit (no sub-layer double-darkening). That pass
+            // is only needed when actually dimmed — leaving it on in the interactive
+            // states (idle/listening/muted, opacity == 1) burned a full-island
+            // re-render on every hover change, stuttering fast-cursor tracking over
+            // the panel. Gate it on `dimmed` so it costs nothing while the panel is in
+            // use. (`hidden` orders the panel out entirely, so it needs no group.)
+            .modifier(CompositeWhenDimmed(active: model.dimmed))
             // Paused dims the whole band (~60%). Muted keeps the band fully black —
             // its "off" reading comes from the gray mascot + mic glyph tint, not from
             // washing the background out against the desktop.
@@ -158,10 +165,15 @@ struct IslandView: View {
 
     // MARK: - Idle "lives in the notch" motion
 
-    /// Idle motion runs ONLY when armed (.idle), the user enabled it, and the
-    /// system isn't in Reduce Motion. Any false → the driver rests at identity.
+    /// Idle motion runs ONLY when armed (.idle), the user enabled it, the system
+    /// isn't in Reduce Motion, AND the control panel isn't open. Pausing it while
+    /// expanded matters for feel: the continuous breathing/gesture animations force
+    /// the band to re-render every frame, which competes with hover updates and
+    /// makes fast-cursor tracking over the panel rows stutter. Holding still while
+    /// the menu is open also reads as the mascot "paying attention." Any false →
+    /// the driver rests at identity.
     private var idleActive: Bool {
-        model.visual == .idle && mascotIdleAnimations && !reduceMotion
+        model.visual == .idle && mascotIdleAnimations && !reduceMotion && !isExpanded
     }
 
     /// Only `"O"`-eye mascots can blink; the rest skip blink (still do gestures).
@@ -195,7 +207,7 @@ struct IslandView: View {
                         revealLine
                     } else if showControlPanel, let controls {
                         IslandControlPanel(controls: controls,
-                                           ink: inkText, dim: inkText.opacity(0.6),
+                                           ink: inkText, dim: inkText.opacity(0.6), accent: coral,
                                            collapse: { collapseNow() })
                             .transition(.opacity)
                     }
@@ -338,10 +350,11 @@ struct IslandView: View {
                 }
                 .padding(.trailing, innerGap)
                 .frame(width: sideArea, alignment: .trailing)
-                // Click the mascot side → toggle mute (the #1 action, no menu). The
-                // whole side zone is the target so it's easy to hit at notch size.
+                // Click the mascot side → toggle mute (the #1 action, no menu) — or,
+                // when mic is denied, open mic settings instead (muting would wrongly
+                // override the .off state). The whole side zone is the target.
                 .contentShape(Rectangle())
-                .onTapGesture { controls?.toggleMute() }
+                .onTapGesture { controls.map { $0.isOff ? $0.fixMic() : $0.toggleMute() } }
             // The camera gap — kept clear (the physical notch sits here).
             Color.clear.frame(width: notchWidth)
             // Right of the camera: mirrors the left — content hugs the notch on
@@ -369,6 +382,16 @@ struct IslandView: View {
             // transcript, launching & failed put their content BELOW the notch
             // (see `revealLine`), not here; hidden shows nothing.
             EmptyView()
+
+        case .off:
+            // Mic denied — a coral attention glyph; tap opens System Settings' mic
+            // pane. Hover reveals the recovery panel (Fix mic · Settings · Quit).
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(coral)
+                .frame(width: 16)
+                .contentShape(Rectangle())
+                .onTapGesture { controls?.fixMic() }
 
         case .idle:
             // Armed — five short, flat bars: the level meter "at rest" (aligns with
@@ -414,7 +437,7 @@ struct IslandView: View {
     private var canExpand: Bool {
         guard controls != nil else { return false }
         switch model.visual {
-        case .idle, .listening, .muted: return true
+        case .idle, .listening, .muted, .off: return true
         default: return false
         }
     }
@@ -494,6 +517,16 @@ struct IslandView: View {
 }
 
 // MARK: - Helper views
+
+/// Applies `compositingGroup()` only while `active`. Used to flatten the band into
+/// one layer for the dim fade, while paying nothing for the offscreen pass in the
+/// interactive (un-dimmed) states where it has no visual effect.
+private struct CompositeWhenDimmed: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        if active { content.compositingGroup() } else { content }
+    }
+}
 
 /// Animatable transform for the mascot's one-shot "wake up" on resume.
 private struct MascotWake {

@@ -29,14 +29,14 @@ enum HeyClaudeMain {
     }
 }
 
-/// Owns the status item, its menu, onboarding, and the voice-pipeline lifecycle.
+/// Owns onboarding, Settings/retrain windows, and the voice-pipeline lifecycle.
+/// There is NO menu-bar status item — the notch island is the app's sole surface.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = AppController()
     private var onboarding: OnboardingWindowController?
     private var preferences: PreferencesWindowController?
     private var retrain: RetrainWindowController?
-    private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Onboarding owns its own window; the controller triggers it on first run.
@@ -44,8 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboarding = ob
         controller.onNeedsOnboarding = { [weak ob] in ob?.show() }
 
-        // Settings dashboard owns its own window, opened from the menu and from the
-        // notch control panel (both route through `onOpenSettings`).
+        // Settings dashboard owns its own window, opened from the notch control panel.
         let prefs = PreferencesWindowController(controller: controller)
         preferences = prefs
         controller.onOpenSettings = { [weak prefs] in prefs?.show() }
@@ -56,62 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         retrain = rt
         controller.onRetrainRequested = { [weak rt] in rt?.show() }
 
-        // The status item, created FIRST with only its image. The image is plain
-        // button content (like a title) and places fine synchronously.
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.isVisible = true
-        item.button?.image = MenuBarIcon.image(for: controller.state)
-        statusItem = item
-
-        // CRITICAL — DO NOT make the menu attach or `controller.start()` synchronous.
-        // macOS places a new `NSStatusItem` ASYNCHRONOUSLY over the run loop. Two
-        // distinct operations, if performed DURING that placement pass, knock the
-        // item's window out of the menu bar (to ≈y−6, off-screen) so the icon never
-        // appears — observed on macOS 26:
-        //   1. assigning an `NSHostingMenu` (SwiftUI-hosted menu), and
-        //   2. ordering ANY window front — the notch island (via `controller.start()`)
-        //      or the onboarding window.
-        // A bare item (image only) places correctly. So we gate BOTH the menu attach
-        // AND the pipeline start behind confirmed placement.
-        whenStatusItemPlaced(item) { [weak self] in
-            guard let self, let item = self.statusItem else { return }
-            item.menu = NSHostingMenu(rootView: MenuContentView(controller: self.controller, preferences: prefs))
-            self.controller.start()
-            self.observeState()
-        }
-    }
-
-    /// Run `body` once the status item's window has actually been placed into the
-    /// menu bar. macOS positions a new `NSStatusItem` asynchronously over the run
-    /// loop; until then its window sits at the screen origin / off-screen. We poll
-    /// the button window's position (placed ⇒ up in the menu-bar strip, in the top
-    /// half of its own screen) every 50 ms, with a ~3 s safety cap so we never hang
-    /// if the item can't place (full bar): in that case we proceed anyway.
-    private func whenStatusItemPlaced(_ item: NSStatusItem, attempt: Int = 0, _ body: @escaping () -> Void) {
-        let placed: Bool = {
-            guard let win = item.button?.window, let screen = win.screen else { return false }
-            return win.frame.origin.y > screen.frame.midY
-        }()
-        if placed || attempt >= 60 {        // 60 × 50 ms ≈ 3 s safety cap
-            body()
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.whenStatusItemPlaced(item, attempt: attempt + 1, body)
-        }
-    }
-
-    /// Keep the menu-bar icon in sync with `AppState`. `withObservationTracking`
-    /// fires once per change, so we re-arm it inside the handler.
-    private func observeState() {
-        withObservationTracking {
-            _ = controller.state
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.statusItem?.button?.image = MenuBarIcon.image(for: self.controller.state)
-                self.observeState()
-            }
-        }
+        // No menu-bar status item. The notch island is the app's only, always-on
+        // surface — it carries mute, target, Recent, failures, mic recovery, Settings
+        // and Quit (when mic is denied it stays visible and tappable to recover, so
+        // the app is never unreachable). This also removes the fragile NSStatusItem
+        // placement dance the menu-bar item needed on macOS 26.
+        controller.start()
     }
 }

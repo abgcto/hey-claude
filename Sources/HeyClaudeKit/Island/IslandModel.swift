@@ -10,7 +10,8 @@ public struct IslandModel: Equatable {
     /// content, size its right area, and pick its height. One case per approved
     /// dynamic-island state (see internal design notes).
     public enum Visual: Equatable {
-        case hidden                 // off — island not drawn
+        case hidden                 // island not drawn (unused now the island is always present)
+        case off                    // mic denied — coral attention glyph, tap to fix; island stays visible
         case idle                   // armed — calm dim dot
         case listening              // hot — pulsing live dot + coral equalizer
         case transcript(String)     // hot + revealing + text — taller band, "● HEARING" + line
@@ -41,8 +42,10 @@ public struct IslandModel: Equatable {
                 failureMessage: String? = nil) {
         switch state {
         case .off:
-            shape = .seam; content = .none; visual = .hidden
-            showsSlash = false; dimmed = false; hidden = true
+            // The island stays VISIBLE (it's now the only surface) and signals it
+            // needs mic access — tappable to open System Settings.
+            shape = .seam; content = .none; visual = .off
+            showsSlash = false; dimmed = false; hidden = false
         case .failed:
             // Reuses the reveal band (same width as hearing/launching, no resize):
             // a single "✕ <message>" line below the notch.

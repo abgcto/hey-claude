@@ -498,12 +498,26 @@ final class AppController {
     /// The hover-panel's actions + data, rebuilt each render so it always reflects
     /// the current target/mute state. Closures hop back to this main-actor controller.
     private func islandControls() -> IslandControls {
-        IslandControls(
+        // Persistent failure → either an actionable remedy (button) or a text hint.
+        let failure: FailureItem? = lastFailure.map { f in
+            FailureItem(message: f.errorDescription ?? "Last launch failed",
+                        remedyLabel: f.settingsActionLabel,
+                        remedy: f.settingsURL.map { url in { NSWorkspace.shared.open(url) } },
+                        hint: f.settingsURL == nil ? f.recoverySuggestion : nil)
+        }
+        let recentItems = recent.entries.map {
+            RecentItem(label: $0.label, failed: $0.outcome == .failed)
+        }
+        return IslandControls(
+            isOff: machine.state == .off,
+            isMuted: machine.state == .muted,
             targets: availableTargets,
             current: settings.preferredTarget,
-            isMuted: machine.state == .muted,
+            recent: recentItems,
+            failure: failure,
             toggleMute: { [weak self] in self?.toggleMute() },
             setTarget: { [weak self] in self?.setPreferredTarget($0) },
+            fixMic: { SystemSettingsLink.microphone.open() },
             openSettings: { [weak self] in self?.onOpenSettings?() },
             quit: { NSApplication.shared.terminate(nil) })
     }

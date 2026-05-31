@@ -130,9 +130,16 @@ final class NotchIslandPanel {
     private var islandScreenRect: CGRect {
         guard host.interactive, host.islandWidth > 0, !screenFrame.isEmpty else { return .zero }
         let total = host.bandHeight + host.panelHeight
-        return CGRect(x: screenFrame.midX - host.islandWidth / 2,
-                      y: screenFrame.maxY - total,
-                      width: host.islandWidth, height: total)
+        // A buffer around the visible footprint. The click-through toggle is driven
+        // by coalesced `.mouseMoved` samples, so a fast cursor can briefly sample
+        // "outside" and flip to click-through mid-interaction (hover flickers). The
+        // margin keeps the region interactive through that slop. Top stays pinned to
+        // the screen edge; sides + bottom get the buffer (the panel grows downward).
+        let m: CGFloat = 16
+        return CGRect(x: screenFrame.midX - host.islandWidth / 2 - m,
+                      y: screenFrame.maxY - total - m,
+                      width: host.islandWidth + m * 2,
+                      height: total + m)
     }
 
     /// Set `ignoresMouseEvents` from the current pointer position. Cheap; called on
@@ -186,7 +193,16 @@ final class NotchIslandPanel {
                            mascot: mascot, mascotColor: Color(hex: mascotColorHex),
                            mascotIdleAnimations: mascotIdleAnimations,
                            controls: controls,
-                           onPanelHeight: { [weak self] h in self?.host.panelHeight = h })
+                           onPanelHeight: { [weak self] h in
+                               guard let self else { return }
+                               // The dropped panel changed height (e.g. the target list
+                               // expanded). Re-evaluate click-through NOW so the grown
+                               // region catches the new rows immediately — otherwise a
+                               // click on a just-revealed target falls through until the
+                               // next mouse-move.
+                               self.host.panelHeight = h
+                               self.syncClickThrough()
+                           })
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -25,13 +25,15 @@ final class IslandModelTests: XCTestCase {
     func test_mutedAndPausedTreatments() {
         XCTAssertTrue(IslandModel(state: .muted, transcript: nil).showsSlash)
         XCTAssertTrue(IslandModel(state: .paused, transcript: nil).dimmed)
-        XCTAssertTrue(IslandModel(state: .off, transcript: nil).hidden)
+        // The island is now always present — even when off — so it can carry mic
+        // recovery + quit (the menu bar is gone).
+        XCTAssertFalse(IslandModel(state: .off, transcript: nil).hidden)
     }
 
     // MARK: - Visual mapping (the per-state right content the view renders)
 
-    func test_offIsHiddenVisual() {
-        XCTAssertEqual(IslandModel(state: .off, transcript: nil).visual, .hidden)
+    func test_offIsVisibleAttentionVisual() {
+        XCTAssertEqual(IslandModel(state: .off, transcript: nil).visual, .off)
     }
     func test_armedIsIdleVisual() {
         XCTAssertEqual(IslandModel(state: .armed, transcript: nil).visual, .idle)
