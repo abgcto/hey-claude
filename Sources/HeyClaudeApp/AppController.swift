@@ -163,6 +163,12 @@ final class AppController {
         try? SettingsStore().save(s)
         settings = s
         executor?.swap(makeExecutor())
+        // Refresh the live island so the hover panel reflects the new target
+        // immediately — `islandControls()` reads `settings.preferredTarget`, and
+        // without this it stays stale until the next state-change re-render (same
+        // pattern as `setMascot` / `setMascotColor`). This is display-only; the
+        // pipeline is deliberately NOT rebooted (see above).
+        updateIsland()
     }
 
     /// Change the notch mascot from Preferences: persist and refresh the live
