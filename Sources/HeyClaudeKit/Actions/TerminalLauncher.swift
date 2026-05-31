@@ -26,6 +26,21 @@ public struct LaunchSpec: Equatable, Sendable {
     static func singleQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
+
+    /// `shellCommand()` escaped for embedding inside an AppleScript
+    /// double-quoted string literal (`write text "…"`, `do script "…"`,
+    /// `keystroke "…"`). AppleScript treats both `\` and `"` as special, so
+    /// both must be escaped — **backslash first**, otherwise the backslashes we
+    /// add for `"` get re-escaped. This step is required even when the prompt
+    /// has no double quotes, because POSIX single-quoting itself emits `'\''`
+    /// (a backslash); a bare `\'` is an invalid AppleScript escape and the
+    /// script fails to compile (verified via `osacompile`). A raw apostrophe in
+    /// a spoken prompt — "don't", "it's" — is the common trigger.
+    public func appleScriptLiteral() -> String {
+        shellCommand()
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
 }
 
 public protocol TerminalLauncher: Sendable {

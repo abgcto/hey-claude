@@ -25,7 +25,7 @@ public struct GhosttyLauncher: TerminalLauncher {
     }
 
     public static func keystrokeScript(for spec: LaunchSpec) -> String {
-        let cmd = spec.shellCommand().replacingOccurrences(of: "\"", with: "\\\"")
+        let cmd = spec.appleScriptLiteral()
         return """
         delay 0.5
         tell application "System Events"
