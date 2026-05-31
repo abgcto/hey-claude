@@ -15,6 +15,20 @@ final class EditorRoutingTests: XCTestCase {
                        "cursor://anthropic.claude-code/open?prompt=fix%20the%20bug%20%E2%80%94%20now%20%F0%9F%9A%80")
     }
 
+    func test_deepLink_encodesQueryDelimiters_soPromptSurvivesRoundTrip() {
+        // Regression guard for the URLComponents footgun: query-delimiter chars
+        // (& # =) MUST be percent-encoded in the value, else the receiving editor
+        // parses a truncated/second param. URLQueryItem does this correctly;
+        // switching to `percentEncodedQuery` would silently break it.
+        for prompt in ["rock & roll", "issue #42", "set a=b", "a & b # c = d"] {
+            let url = DeepLinkBuilder.url(editor: .cursor, integration: .claudeCode, prompt: prompt)
+            let echoed = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "prompt" }?.value
+            XCTAssertEqual(echoed, prompt, "prompt did not survive round-trip: \(url.absoluteString)")
+            XCTAssertFalse(url.absoluteString.contains("prompt=rock & roll"))   // not left raw
+        }
+    }
+
     func test_deepLink_noPrompt_hasNoQuery() {
         let url = DeepLinkBuilder.url(editor: .vscode, integration: .claudeCode, prompt: nil)
         XCTAssertEqual(url.absoluteString, "vscode://anthropic.claude-code/open")
@@ -92,5 +106,26 @@ final class EditorRoutingTests: XCTestCase {
         // Antigravity installed, but no Claude Code extension folder → not ready.
         let avail = EditorAvailability(home: home, appInstalled: { _ in true })
         XCTAssertFalse(avail.isReady(.antigravity, integration: .claudeCode))
+    }
+
+    func test_availability_installedMissingExtension_drivesDisabledPickerRows() throws {
+        // The onboarding picker shows editors that are installed but lack the
+        // tool extension as *disabled* rows. cursor has the ext (ready);
+        // antigravity is installed without it (disabled); vscode isn't installed
+        // at all (absent). This split is `installedMissingExtension` vs `readyEditors`.
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hc-avail-\(ProcessInfo.processInfo.globallyUniqueString)")
+        let cursorExt = home.appendingPathComponent(".cursor/extensions/anthropic.claude-code-2.1.0")
+        try FileManager.default.createDirectory(at: cursorExt, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".antigravity/extensions"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let avail = EditorAvailability(
+            home: home,
+            appInstalled: { $0 == EditorKind.cursor.bundleID || $0 == EditorKind.antigravity.bundleID })
+
+        XCTAssertEqual(avail.readyEditors(integration: .claudeCode), [.cursor])
+        XCTAssertEqual(avail.installedMissingExtension(integration: .claudeCode), [.antigravity])
     }
 }
