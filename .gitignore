@@ -8,11 +8,28 @@ Sources/CSherpaOnnx/sherpa-onnx.xcframework/
 Tests/HeyClaudeKitTests/Fixtures/*.wav
 *.onnx
 
-# Landing page lives in its own repo — ignored here.
+# Fonts: General Sans (ITF Free Font License) is NOT redistributable — keep the
+# .otf files local, never commit them. The app falls back to the system font.
+*.otf
+
+# Secrets / signing material — must never be committed.
+*.p12
+*.mobileprovision
+.env
+.env.*
+
+# Maintainer-only release tooling (personal signing/notarization identity).
+scripts/release.sh
+scripts/entitlements.plist
+
+# Landing pages live in their own repos — ignored here.
 site/
+web/
 .playwright-mcp/
 
 # Built app bundle (assembled by scripts/bundle-app.sh)
 HeyClaude.app/
-# Playwright MCP scratch cache
-.playwright-mcp/
+# Release artifacts (assembled by scripts/release.sh) — large, regenerated builds.
+HeyClaude.dmg
+HeyClaude-notarize.zip
+.superpowers/
