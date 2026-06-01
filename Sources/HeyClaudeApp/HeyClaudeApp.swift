@@ -76,4 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pushToTalk = ptt
         if controller.settings.pushToTalkEnabled { ptt.start() }
     }
+
+    /// Re-open while already running (double-click in Finder / `open` command).
+    /// The app only runs when onboarding is complete — closing the onboarding
+    /// window quits the app — so always route to Settings.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        controller.onOpenSettings?()
+        return true
+    }
 }

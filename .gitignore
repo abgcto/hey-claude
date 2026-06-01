@@ -18,9 +18,10 @@ Tests/HeyClaudeKitTests/Fixtures/*.wav
 .env
 .env.*
 
-# Maintainer-only release tooling (personal signing/notarization identity).
+# Maintainer-only release tooling — release.sh stays private (it carries the
+# personal signing/notarization identity). entitlements.plist IS tracked: it's
+# just app entitlements (mic + Apple-events) and the release CI needs it.
 scripts/release.sh
-scripts/entitlements.plist
 
 # Landing pages live in their own repos — ignored here.
 site/

@@ -1,0 +1,97 @@
+name: Release
+
+# Cut a release by bumping the version in scripts/Info.plist, then pushing a tag:
+#   git tag v0.1.1 && git push origin v0.1.1
+# This builds, signs, notarizes, staples, and publishes a GitHub Release with
+# HeyClaude.dmg attached. The "Download" button (releases/latest/download/…) then
+# serves the new DMG automatically.
+#
+# One-time setup — add these repo Secrets (Settings → Secrets and variables → Actions):
+#   MACOS_CERT_P12       base64 of your "Developer ID Application" certificate (.p12)
+#   MACOS_CERT_PASSWORD  the .p12 export password
+#   KEYCHAIN_PASSWORD    any string (used for the temporary CI keychain)
+#   HEYCLAUDE_SIGN_ID    e.g. "Developer ID Application: Your Name (TEAMID)"
+#   NOTARY_APPLE_ID      your Apple ID email
+#   NOTARY_TEAM_ID       your 10-char Team ID
+#   NOTARY_PASSWORD      an app-specific password (appleid.apple.com)
+#
+# NOTE: fonts aren't in the repo, so CI-built DMGs fall back to the system font.
+# Build locally with scripts/release.sh if you want the branded General Sans.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write          # create the Release + upload the asset
+
+jobs:
+  release:
+    runs-on: macos-14      # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select a Swift 6 toolchain
+        run: sudo xcode-select -s /Applications/Xcode_16.1.app   # adjust to a Swift-6 Xcode on the runner
+
+      - name: Fetch native deps (not committed — large)
+        run: |
+          ./scripts/fetch-sherpa.sh
+          ./scripts/fetch-models.sh
+
+      - name: Import Developer ID certificate
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm -f /tmp/cert.p12
+
+      - name: Build · sign · notarize · staple · package
+        env:
+          HEYCLAUDE_SIGN_ID: ${{ secrets.HEYCLAUDE_SIGN_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP=HeyClaude.app
+          swift build --product HeyClaudeApp -c release
+          BIN="$(swift build --product HeyClaudeApp -c release --show-bin-path)/HeyClaudeApp"
+
+          # Assemble the .app bundle (mirrors scripts/release.sh).
+          rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Fonts"
+          cp "$BIN" "$APP/Contents/MacOS/HeyClaude"
+          cp scripts/Info.plist "$APP/Contents/Info.plist"
+          [ -f Resources/AppIcon.icns ] || ./scripts/make-appicon.sh
+          cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+          cp Resources/Fonts/*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null || true   # absent on CI → system font
+          cp -R Models "$APP/Contents/Resources/Models"                                    # models must live INSIDE the bundle
+
+          # Hardened-runtime signature (required for notarization).
+          codesign --force --options runtime --timestamp \
+            --entitlements scripts/entitlements.plist \
+            --sign "$HEYCLAUDE_SIGN_ID" "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
+
+          # Notarize the app, then staple, then seal into the DMG.
+          ditto -c -k --keepParent "$APP" notarize.zip
+          xcrun notarytool submit notarize.zip \
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD" --wait
+          xcrun stapler staple "$APP"
+
+          stage="$(mktemp -d)"; cp -R "$APP" "$stage/"; ln -s /Applications "$stage/Applications"
+          hdiutil create -volname "Hey Claude" -srcfolder "$stage" -ov -format UDZO HeyClaude.dmg
+          xcrun stapler staple HeyClaude.dmg || true
+
+      - name: Publish the GitHub Release with the DMG
+        uses: softprops/action-gh-release@v2
+        with:
+          files: HeyClaude.dmg
+          generate_release_notes: true

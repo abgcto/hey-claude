@@ -103,23 +103,14 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     /// the "Not now" button and the finale both use `orderOut`, which does NOT
     /// fire this — so this only catches a raw window dismissal.
     ///
-    /// If the finale already committed, do nothing. Otherwise treat it like
-    /// "Skip for now": `model?.skip()` leaves the app functional (bundled keyword
-    /// + booted pipeline), then we tear down our own state and revert the
-    /// activation policy. We must NOT call `close()`/`orderOut` here — the window
-    /// is already closing, and re-closing would recurse.
+    /// If the finale already committed, do nothing. Otherwise quit — the app is
+    /// non-functional until onboarding is done. Re-launching starts fresh.
     func windowWillClose(_ notification: Notification) {
         if committed { return }
-        // Only finalize once mic access is granted — the product can't function
-        // without it. Closing before that leaves onboarding pending (we don't
-        // mark it complete), so it re-appears next launch instead of dropping the
-        // user into a dead, mic-denied app. Once mic is granted, a mid-flow close
-        // finalizes with sensible defaults (bundled keyword).
-        if model?.micGranted == true { model?.skip() }
         flight.dismiss()
         model = nil
         window = nil
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.terminate(nil)
     }
 
     /// Window regained focus — likely the user returning from System Settings

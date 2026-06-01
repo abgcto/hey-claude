@@ -106,7 +106,7 @@ struct IslandControlPanel: View {
         // don't have to open this panel just to mute/resume.
         row(icon: controls.isMuted ? "mic.slash.fill" : "pause.fill",
             title: controls.isMuted ? "Resume" : "Mute",
-            trailing: "click mascot",
+            trailing: "click clawd",
             action: controls.toggleMute)
 
         row(icon: "arrow.up.forward.app", title: "Open in…",
