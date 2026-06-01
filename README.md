@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="assets/icon.png" width="120" alt="Hey Claude app icon">
-
-# ✿ Hey Claude ✿
+<h1><img src="assets/icon.png" width="40" alt="" align="center">&nbsp; Hey Claude</h1>
 
 **A voice-activated launcher for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) on macOS**
 
@@ -22,10 +20,9 @@ Because I got really, really tired of typing `claude` a hundred times a day ♡
 
 <br>
 
-## [⬇︎ Download for macOS](https://github.com/lilmelon77/hey-claude/releases/latest)
+<a href="https://github.com/lilmelon77/hey-claude/releases/latest"><img src="assets/download-button.png" alt="Download for macOS" width="240"></a>
 
-Notarized `.dmg` for **Apple Silicon · macOS 14.4+** — no build required.
-Open it, drag **Hey Claude** to Applications, and say the words.
+<sub>Notarized `.dmg` · Apple Silicon · macOS 14.4+ · no build required</sub>
 
 </div>
 
@@ -51,16 +48,6 @@ Everything runs **on-device**. Your voice never leaves your Mac. ♡
 - 🗣️ **Learns your voice** — Onboarding tunes the wake word to your own voice & accent.
 - ⚡ **Spoken prompts** — _"Hey Claude, &lt;question&gt;"_ sends it straight into Claude Code.
 - 🎨 **Make it yours** — Pick the notch mascot, its color, and idle animations in Settings.
-
----
-
-## ♡ Privacy
-
-This is the part I care about most. All wake-word and speech recognition happens **locally**, using on-device models (a streaming KWS zipformer for the wake word, Parakeet for speech-to-text). Your microphone audio is processed on your machine and is **not uploaded anywhere** by this app. The only thing that leaves your Mac is whatever **you** then send through Claude Code itself.
-
-No telemetry. No cloud wake word. No audio logged or sent anywhere.
-
-> **Caveat (the honest fine print):** macOS itself may still show a microphone-in-use indicator, and Claude Code — once launched — talks to Anthropic as it normally would. "On-device" refers to _this app's_ wake-word and transcription pipeline.
 
 ---
 
@@ -93,14 +80,56 @@ On first run it detects the editor you're actively using and defaults to it (fal
 
 ---
 
-## Requirements
+## Privacy
 
-- **macOS 14.4+** on **Apple Silicon** (built and tested on macOS 26)
-- **Xcode Command Line Tools** — `xcode-select --install`
-- **Swift 6** toolchain
-- The [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) on your `PATH`
+This is the part I care about most. All wake-word and speech recognition happens **locally**, using on-device models (a streaming KWS zipformer for the wake word, Parakeet for speech-to-text). Your microphone audio is processed on your machine and is **not uploaded anywhere** by this app. The only thing that leaves your Mac is whatever **you** then send through Claude Code itself.
 
-## Build & run
+No telemetry. No cloud wake word. No audio logged or sent anywhere.
+
+> **Caveat (the honest fine print):** macOS itself may still show a microphone-in-use indicator, and Claude Code — once launched — talks to Anthropic as it normally would. "On-device" refers to _this app's_ wake-word and transcription pipeline.
+
+---
+
+## Install
+
+Most people just want the app:
+
+1. **[Download the latest `.dmg`](https://github.com/lilmelon77/hey-claude/releases/latest)** ↑
+2. Open it and drag **Hey Claude** into **Applications**.
+3. Launch it from Applications (or Spotlight) and follow the short onboarding.
+
+It's **notarized by Apple**, so it opens normally — no right-click-to-open workaround.
+
+**Requirements:** an **Apple Silicon** Mac (M1 or newer) on **macOS 14.4+**, and the
+[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) on your `PATH`
+(that's what it launches).
+
+### Permissions it will ask for
+
+Hey Claude is a voice app, so on first run macOS will prompt for:
+
+- **Microphone** — required. The wake word and speech-to-text both listen here. Without it, nothing works.
+- **Input Monitoring** — only if you use **push-to-talk** (the hold-a-key mode). The wake-word mode doesn't need it.
+- **Automation / Accessibility** — the first time it opens your terminal or editor, macOS may ask permission to control that app.
+
+You can review or change these anytime in **System Settings → Privacy & Security**. All of it is local — see [Privacy](#privacy) above.
+
+### Uninstalling
+
+Quit Hey Claude, drag **Hey Claude.app** from Applications to the Trash, and (optionally)
+remove its data:
+
+```bash
+rm -rf ~/Library/Application\ Support/HeyClaude
+```
+
+---
+
+## Build from source
+
+For contributors and the curious. **You don't need this to use the app** — grab the `.dmg` above.
+
+**Toolchain:** **Xcode Command Line Tools** (`xcode-select --install`) and the **Swift 6** toolchain, on macOS 14.4+ / Apple Silicon.
 
 The ML model files and the prebuilt sherpa-onnx framework are **not** checked in (they're large and carry their own upstream licenses). Two scripts fetch them from pinned upstream releases:
 
@@ -128,7 +157,10 @@ export HEYCLAUDE_SIGN_ID="Developer ID Application: Your Name (TEAMID)"
 ./scripts/bundle-app.sh
 ```
 
-On first launch, grant **Microphone** access when prompted; onboarding then walks you through calibrating the wake word to your voice.
+> **Note:** `swift run HeyClaudeApp` launches the bare binary without an `Info.plist`, so the
+> mic prompt, bundled fonts, and app icon are missing — fine for a compile check, but use
+> `./scripts/bundle-app.sh` (or `./scripts/dev.sh`) to actually exercise the app. See
+> [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Developer tools
 
@@ -143,7 +175,7 @@ swift test                      # XCTest suite (requires a full Xcode toolchain)
 
 Issues and PRs are very welcome — this is a small community project and I'd love the help. ꒰ ˶ˆ ᵕ ˆ˶ ꒱ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, the dev loop, testing, and wake-word debugging. Contributions are under GPL-3.0, and please keep the unaffiliated-with-Anthropic framing intact.
 
-## License
+## Third-party & licenses
 
 This project's own source is licensed under **GPL-3.0** (see [`LICENSE`](LICENSE)) — if you distribute a modified version, you must release your changes under the same license. Bundled and downloaded components keep their respective upstream licenses; see [`NOTICE`](NOTICE) for full attributions.
 
