@@ -177,7 +177,7 @@ swift test                      # XCTest suite (requires a full Xcode toolchain)
 
 ## Contributing
 
-Issues and PRs are very welcome — this is a small community project and I'd love the help. ꒰ ˶ˆ ᵕ ˆ˶ ꒱ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, the dev loop, testing, and wake-word debugging. Contributions are under GPL-3.0, and please keep the unaffiliated-with-Anthropic framing intact.
+Issues and PRs are very welcome — this is a small community project and I'd love the help. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, the dev loop, testing, and wake-word debugging. Contributions are under GPL-3.0, and please keep the unaffiliated-with-Anthropic framing intact.
 
 ## Third-party & licenses
 
