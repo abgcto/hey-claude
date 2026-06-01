@@ -37,6 +37,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var mascotID: String                    // selected mascot (MascotCatalog id)
     public var mascotColorHex: String              // mascot body color, e.g. "#D87757"
     public var mascotIdleAnimations: Bool          // ambient idle mascot motion (blink/breathe/gestures)
+    public var pushToTalkEnabled: Bool             // hold-to-talk hotkey active
+    public var pushToTalkKey: PushToTalkKey         // which key triggers it
 
     public init(projectDirectory: String = NSHomeDirectory(),
                 preferredTarget: LaunchTarget = .terminal(.terminalApp),
@@ -52,7 +54,9 @@ public struct Settings: Codable, Equatable, Sendable {
                 onboardingCompleted: Bool = false,
                 mascotID: String = "classic",
                 mascotColorHex: String = "#D87757",
-                mascotIdleAnimations: Bool = true) {
+                mascotIdleAnimations: Bool = true,
+                pushToTalkEnabled: Bool = true,
+                pushToTalkKey: PushToTalkKey = .rightOption) {
         self.projectDirectory = projectDirectory
         self.preferredTarget = preferredTarget
         self.wakeKeywordsScore = wakeKeywordsScore
@@ -68,6 +72,8 @@ public struct Settings: Codable, Equatable, Sendable {
         self.mascotID = mascotID
         self.mascotColorHex = mascotColorHex
         self.mascotIdleAnimations = mascotIdleAnimations
+        self.pushToTalkEnabled = pushToTalkEnabled
+        self.pushToTalkKey = pushToTalkKey
     }
 
     /// Pre-`LaunchTarget` settings stored the default destination as a bare
@@ -132,6 +138,12 @@ public struct Settings: Codable, Equatable, Sendable {
         // Default ON so existing installs get the delight; system Reduce Motion still overrides.
         self.mascotIdleAnimations = try container.decodeIfPresent(Bool.self, forKey: .mascotIdleAnimations)
             ?? true
+        // Default ON so the feature is discoverable; it stays inert until the
+        // user grants Input Monitoring (PushToTalkController gates on permission).
+        self.pushToTalkEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushToTalkEnabled)
+            ?? true
+        self.pushToTalkKey = try container.decodeIfPresent(PushToTalkKey.self, forKey: .pushToTalkKey)
+            ?? .rightOption
     }
 
     public static let `default` = Settings()

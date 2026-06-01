@@ -14,10 +14,15 @@ struct VoiceSection: View {
     private static let thresholdMore: Float = 0.08
 
     @State private var position: Double
+    @State private var ptEnabled: Bool
+    @State private var ptKey: PushToTalkKey
+    @State private var hasInputMonitoring: Bool = PushToTalkController.hasPermission
 
     init(controller: AppController) {
         self.controller = controller
         _position = State(initialValue: Self.position(for: controller.settings.wakeKeywordsThreshold))
+        _ptEnabled = State(initialValue: controller.settings.pushToTalkEnabled)
+        _ptKey = State(initialValue: controller.settings.pushToTalkKey)
     }
 
     private static func position(for threshold: Float) -> Double {
@@ -49,6 +54,62 @@ struct VoiceSection: View {
                     .font(PreferencesTheme.caption)
                     .foregroundStyle(PreferencesTheme.inkSoft)
                 DashboardButton("Re-train wake word") { controller.requestRetrain() }
+            }
+            SettingsGroup("PUSH TO TALK") {
+                // Toggle + its explanation, grouped tight (6pt) so they read as one
+                // unit — mirrors AppearanceSection's `idleToggle`. Uses the pane's
+                // monochrome DashboardToggle, not the system blue switch.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Text("Hold a key to talk")
+                            .font(PreferencesTheme.body)
+                            .foregroundStyle(PreferencesTheme.ink)
+                        DashboardToggle(isOn: $ptEnabled)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .onChange(of: ptEnabled) { _, on in
+                        if on && !PushToTalkController.hasPermission {
+                            PushToTalkController.requestPermission()
+                        }
+                        controller.setPushToTalkEnabled(on)
+                        hasInputMonitoring = PushToTalkController.hasPermission
+                    }
+                    Text("Hold your key, speak, release. Pauses never cut you off.")
+                        .font(PreferencesTheme.caption)
+                        .foregroundStyle(PreferencesTheme.inkSoft)
+                }
+
+                // The key control + permission. Kept ALWAYS visible (just dimmed +
+                // disabled when the toggle is off) so flipping the toggle never makes
+                // the row vanish — that read as "the feature broke". Sits `rowSpacing`
+                // (12) below the toggle block — a clear tier break. The permission
+                // hint only matters when push-to-talk is actually on.
+                VStack(alignment: .leading, spacing: PreferencesTheme.listSpacing) {
+                    // Built-in label ("Key") + menu — the exact form that rendered
+                    // originally. Do NOT add `.fixedSize()`: a `.menu` Picker reports
+                    // an ideal width of ~0 before its menu is built, so `.fixedSize()`
+                    // collapses it to a zero-size (invisible) control. Likewise avoid
+                    // `.labelsHidden()` with an empty label — same collapse.
+                    Picker("Key", selection: $ptKey) {
+                        ForEach(PushToTalkKey.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: ptKey) { _, k in controller.setPushToTalkKey(k) }
+
+                    if ptEnabled && !hasInputMonitoring {
+                        HStack(spacing: 8) {
+                            Text("Needs Input Monitoring access.")
+                                .font(PreferencesTheme.caption)
+                                .foregroundStyle(PreferencesTheme.inkSoft)
+                            DashboardButton("Grant access") {
+                                PushToTalkController.requestPermission()
+                                SystemSettingsLink.inputMonitoring.open()
+                            }
+                        }
+                    }
+                }
+                .disabled(!ptEnabled)
+                .opacity(ptEnabled ? 1 : 0.4)
             }
             Spacer(minLength: 0)
         }

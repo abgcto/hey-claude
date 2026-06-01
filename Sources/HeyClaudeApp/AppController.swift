@@ -71,6 +71,12 @@ final class AppController {
     private var transcriber: ParakeetTranscriber?
     private var capture: CaptureSession?
     private var voice: VoiceSession?
+    /// Push-to-talk bridge: the tap controller writes it, the audio loop reads it.
+    /// Lives for the app's lifetime (cheap), independent of pipeline restarts.
+    private let manualFlag = ManualCaptureFlag()
+    /// Set true while a hold temporarily un-muted the mic, so release re-mutes.
+    /// Main-actor state (only `pushToTalkPressed/Released` touch it).
+    private var ptHeldUnmute = false
     /// Live launch executor, boxed so target/folder changes can hot-swap it
     /// without rebooting the pipeline. See `CommandExecutorHolder`.
     private var executor: CommandExecutorHolder?
@@ -213,6 +219,28 @@ final class AppController {
         try? SettingsStore().save(s)
         settings = s
         executor?.swap(makeExecutor())
+    }
+
+    /// The live push-to-talk tap. Set by the app layer (HeyClaudeApp) after the
+    /// pipeline boots, so Settings changes can start/stop/rekey it. nil before
+    /// the window layer is wired (and on the model-less / mic-denied early-out).
+    var pushToTalk: PushToTalkController?
+
+    /// Toggle push-to-talk from Settings: persist + start/stop the tap. No pipeline
+    /// restart — the tap is independent of the audio models.
+    func setPushToTalkEnabled(_ on: Bool) {
+        guard on != settings.pushToTalkEnabled else { return }
+        var s = settings; s.pushToTalkEnabled = on
+        try? SettingsStore().save(s); settings = s
+        if on { pushToTalk?.start() } else { pushToTalk?.stop() }
+    }
+
+    /// Change the trigger key from Settings: persist + swap it on the live tap.
+    func setPushToTalkKey(_ key: PushToTalkKey) {
+        guard key != settings.pushToTalkKey else { return }
+        var s = settings; s.pushToTalkKey = key
+        try? SettingsStore().save(s); settings = s
+        pushToTalk?.setKey(key)
     }
 
     /// Builds a `WakeWordEngine` from the current settings + resolved keyword file.
@@ -364,13 +392,27 @@ final class AppController {
                 observe: { logRoute($0) })
             self.voice = voice
 
+            // `mode` is flipped in `onFrame` when capture starts (wake vs push-to-
+            // talk) and read here at emit time — both run on the audio queue, so
+            // this plain reference type needs no locking. Reading `capture.isManual`
+            // here would be wrong: `emitAndReset` clears it before `onUtterance`.
+            let mode = CaptureModeBox()
             let capture = CaptureSession(
                 postFireMaxSeconds: settings.maxUtteranceSeconds,
                 vad: VoiceActivityDetector(hangoverMs: settings.endpointSilenceMs),
-                onUtterance: { clip in
-                    // Runs on the audio queue. Route + execute via VoiceSession (which
-                    // also transcribes). CaptureSession stays on this queue.
-                    voice.handle(utterance: clip)
+                onUtterance: { [weak self] clip in
+                    // Runs on the audio queue. Manual clips are a freeform prompt
+                    // (empty → no-op); wake clips route through the normal handle.
+                    if mode.manual {
+                        // A fired hold is settled by the launch flow (`didFinish`),
+                        // but an empty/no-op hold launches nothing — so nothing would
+                        // clear the `.hot` capturing visual. Settle it back to idle.
+                        if !voice.handleManual(utterance: clip) {
+                            Task { @MainActor in self?.emit(.settled) }
+                        }
+                    } else {
+                        voice.handle(utterance: clip)
+                    }
                 })
             self.capture = capture
 
@@ -379,15 +421,35 @@ final class AppController {
             let audio = try AudioCapture(onFrame: { [weak self] frame in
                 // Runs on AudioCapture's serial queue. AudioCapture itself drops
                 // frames while muted, so no mute check is needed here.
+                let active = self?.manualFlag.active ?? false
+
                 switch capture.state {
                 case .listening:
-                    capture.feedWhileListening(frame)
-                    if wake.feed(frame) {
-                        capture.fire()
-                        Task { @MainActor in self?.emit(.wakeFired) }
+                    if active {
+                        mode.manual = true
+                        capture.fireManual()                          // push-to-talk press
+                        Task { @MainActor in self?.emit(.wakeFired) }  // reuse the listening visual
+                    } else {
+                        capture.feedWhileListening(frame)
+                        if wake.feed(frame) {
+                            mode.manual = false
+                            capture.fire()
+                            Task { @MainActor in self?.emit(.wakeFired) }
+                        }
                     }
                 case .capturing:
-                    capture.feedWhileCapturing(frame)
+                    if capture.isManual && !active {
+                        // Hold ended: Esc-cancel discards the clip; a normal
+                        // release sends it. `pushToTalkCancelled` already settled
+                        // the UI, so the discard path stays silent here.
+                        if self?.manualFlag.shouldCancel == true {
+                            capture.manualCancel()                    // Esc → discard
+                        } else {
+                            capture.manualEndpoint()                  // release → send
+                        }
+                    } else {
+                        capture.feedWhileCapturing(frame)
+                    }
                 }
             })
             self.audio = audio
@@ -471,6 +533,56 @@ final class AppController {
         let isLive = audio?.setMuted(wantMuted) ?? !wantMuted
         userMuted = !isLive
         emit(userMuted ? .muted : .unmuted)
+    }
+
+    /// Push-to-talk pressed. Raise the manual flag immediately (the audio loop
+    /// fires capture on the next frame). If muted, honor the user's "hold
+    /// temporarily un-mutes" choice by re-acquiring the mic — but do it OFF the
+    /// tap callback: starting AVAudioEngine is slow enough to trip the tap's
+    /// `kCGEventTapDisabledByTimeout`. The common (already-live) path just flips
+    /// the flag and returns.
+    func pushToTalkPressed() {
+        guard settings.pushToTalkEnabled else { return }
+        manualFlag.press()                         // instant — never block the tap callback
+        guard userMuted else { return }            // already live → nothing else to do
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.manualFlag.active else { return }  // released/cancelled already → skip
+            let live = self.audio?.setMuted(false) ?? false
+            if live {
+                self.userMuted = false
+                self.ptHeldUnmute = true            // remember to re-mute on release
+                // Brief arming beat: the engine just started; its first frames are
+                // warming up, so the rolling pre-roll is empty on this path.
+            } else {
+                self.manualFlag.release()           // unmute failed → abort the hold
+                self.emit(.muted)                   // flash
+            }
+        }
+    }
+
+    /// Push-to-talk released. Lower the flag (the audio loop ends capture on the
+    /// next frame and SENDS the clip), then restore mute if the hold had
+    /// temporarily un-muted — also off-callback, same reason.
+    func pushToTalkReleased() {
+        manualFlag.release()                       // instant
+        guard ptHeldUnmute else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.ptHeldUnmute = false
+            if self.audio?.setMuted(true) != nil { self.userMuted = true; self.emit(.muted) }
+        }
+    }
+
+    /// Push-to-talk cancelled (Esc tapped mid-hold). Flip the flag to cancel (the
+    /// audio loop DISCARDS the in-flight clip on the next frame), settle the
+    /// equalizer back to idle now, and restore mute if the hold had temporarily
+    /// un-muted. Runs synchronously on the main actor (the tap hops to main).
+    func pushToTalkCancelled() {
+        manualFlag.cancel()
+        emit(.settled)                             // drop the equalizer (idempotent if not .hot)
+        guard ptHeldUnmute else { return }
+        ptHeldUnmute = false
+        if audio?.setMuted(true) != nil { userMuted = true; emit(.muted) }
     }
 
     private func emit(_ e: AppEvent) {
@@ -606,3 +718,11 @@ final class AppController {
         return nil
     }
 }
+
+/// Records whether the in-flight capture started from push-to-talk (manual) or
+/// the wake word. Set in `AppController`'s `onFrame` at the moment capture fires
+/// and read in the same pipeline's `onUtterance` at emit time — both run on the
+/// audio serial queue, so this plain reference type needs no locking. Reading
+/// `CaptureSession.isManual` at emit time would be wrong: `emitAndReset` clears
+/// it *before* calling `onUtterance`.
+private final class CaptureModeBox { var manual = false }

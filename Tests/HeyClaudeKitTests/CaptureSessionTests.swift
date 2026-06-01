@@ -38,4 +38,70 @@ final class CaptureSessionTests: XCTestCase {
         session.feedWhileCapturing(silence(600))   // nothing after
         XCTAssertTrue(fired)                        // still endpoints + reports
     }
+
+    func test_manual_doesNotEndpointOnSilence_emitsOnlyOnManualEndpoint() {
+        var captured: [Float]? = nil
+        let session = CaptureSession(
+            sampleRate: 16000, prerollSeconds: 1.0, postFireMaxSeconds: 30.0,
+            vad: VoiceActivityDetector(energyThreshold: 0.01, frameMs: 20, hangoverMs: 400),
+            onUtterance: { captured = $0 })
+
+        session.fireManual()
+        session.feedWhileCapturing(speech(200))
+        session.feedWhileCapturing(silence(2000))   // long pause — VAD would normally endpoint
+        XCTAssertNil(captured, "manual capture must NOT endpoint on silence")
+        XCTAssertEqual(session.state, .capturing)
+
+        session.manualEndpoint()                      // key released
+        XCTAssertNotNil(captured, "manual endpoint emits the clip")
+        XCTAssertEqual(session.state, .listening)
+    }
+
+    func test_manual_safetyCapStillBounds() {
+        var captured: [Float]? = nil
+        let session = CaptureSession(
+            sampleRate: 16000, prerollSeconds: 1.0, postFireMaxSeconds: 1.0,   // 1s cap
+            vad: VoiceActivityDetector(energyThreshold: 0.01, frameMs: 20, hangoverMs: 400),
+            onUtterance: { captured = $0 })
+        session.fireManual()
+        session.feedWhileCapturing(speech(1100))      // exceeds the 1s cap
+        XCTAssertNotNil(captured, "30s-style safety cap still bounds a manual hold")
+        XCTAssertEqual(session.state, .listening)
+    }
+
+    func test_manualEndpoint_isNoOpWhenNotManuallyCapturing() {
+        var fired = false
+        let session = CaptureSession(
+            sampleRate: 16000, prerollSeconds: 1.0, postFireMaxSeconds: 2.0,
+            vad: VoiceActivityDetector(energyThreshold: 0.01, frameMs: 20, hangoverMs: 400),
+            onUtterance: { _ in fired = true })
+        session.manualEndpoint()                       // never fired
+        XCTAssertFalse(fired)
+        XCTAssertEqual(session.state, .listening)
+    }
+
+    func test_manualCancel_discardsWithoutEmitting() {
+        var fired = false
+        let session = CaptureSession(
+            sampleRate: 16000, prerollSeconds: 1.0, postFireMaxSeconds: 30.0,
+            vad: VoiceActivityDetector(energyThreshold: 0.01, frameMs: 20, hangoverMs: 400),
+            onUtterance: { _ in fired = true })
+        session.fireManual()
+        session.feedWhileCapturing(speech(500))        // spoke something…
+        session.manualCancel()                          // …then hit Esc
+        XCTAssertFalse(fired, "Esc cancel must NOT emit the captured clip")
+        XCTAssertFalse(session.isManual)
+        XCTAssertEqual(session.state, .listening)
+    }
+
+    func test_manualCancel_isNoOpWhenNotManuallyCapturing() {
+        var fired = false
+        let session = CaptureSession(
+            sampleRate: 16000, prerollSeconds: 1.0, postFireMaxSeconds: 2.0,
+            vad: VoiceActivityDetector(energyThreshold: 0.01, frameMs: 20, hangoverMs: 400),
+            onUtterance: { _ in fired = true })
+        session.manualCancel()
+        XCTAssertFalse(fired)
+        XCTAssertEqual(session.state, .listening)
+    }
 }

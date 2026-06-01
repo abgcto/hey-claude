@@ -104,4 +104,29 @@ final class SettingsStoreTests: XCTestCase {
         let s = try JSONDecoder().decode(Settings.self, from: Data(legacy.utf8))
         XCTAssertTrue(s.mascotIdleAnimations)
     }
+
+    func test_pushToTalkFields_defaultAndRoundTrip() throws {
+        let fresh = Settings()
+        XCTAssertTrue(fresh.pushToTalkEnabled)
+        XCTAssertEqual(fresh.pushToTalkKey, .rightOption)
+
+        var s = Settings()
+        s.pushToTalkEnabled = false
+        s.pushToTalkKey = .controlOption
+        let data = try JSONEncoder().encode(s)
+        let decoded = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertEqual(decoded.pushToTalkEnabled, false)
+        XCTAssertEqual(decoded.pushToTalkKey, .controlOption)
+    }
+
+    func test_legacySettingsWithoutPushToTalk_decodeToDefaults() throws {
+        let legacy = """
+        {"projectDirectory":"/tmp","wakeKeywordsScore":2.0,"wakeKeywordsThreshold":0.25,
+         "cooldownSeconds":2.0,"claudeExecutable":"claude","defaultCommandID":"claude-code",
+         "promptCommandID":"claude-code"}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(Settings.self, from: legacy)
+        XCTAssertTrue(decoded.pushToTalkEnabled)
+        XCTAssertEqual(decoded.pushToTalkKey, .rightOption)
+    }
 }

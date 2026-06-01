@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboarding: OnboardingWindowController?
     private var preferences: PreferencesWindowController?
     private var retrain: RetrainWindowController?
+    private var pushToTalk: PushToTalkController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Onboarding owns its own window; the controller triggers it on first run.
@@ -65,5 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the app is never unreachable). This also removes the fragile NSStatusItem
         // placement dance the menu-bar item needed on macOS 26.
         controller.start()
+
+        // Push-to-talk global hotkey — coexists with the wake word. Independent of
+        // the audio pipeline, so it's wired here regardless of onboarding state and
+        // stays inert until Input Monitoring is granted (Settings ▸ Voice). Default
+        // key is bare Right Option (collision-proof against Wispr Flow).
+        let ptt = PushToTalkController(controller: controller, key: controller.settings.pushToTalkKey)
+        controller.pushToTalk = ptt
+        pushToTalk = ptt
+        if controller.settings.pushToTalkEnabled { ptt.start() }
     }
 }
