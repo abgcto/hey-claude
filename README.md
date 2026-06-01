@@ -20,7 +20,7 @@ Because I got really, really tired of typing `claude` a hundred times a day ♡
 
 <br>
 
-<a href="https://github.com/lilmelon77/hey-claude/releases/latest"><img src="assets/download-button.svg" alt="Download for macOS" width="240"></a>
+<a href="https://github.com/lilmelon77/hey-claude/releases/latest/download/HeyClaude.dmg"><img src="assets/download-button.svg" alt="Download for macOS" width="240"></a>
 
 <sub>Notarized `.dmg` · Apple Silicon · macOS 14.4+ · no build required</sub>
 
@@ -98,7 +98,7 @@ No telemetry. No cloud wake word. No audio logged or sent anywhere.
 
 Most people just want the app:
 
-1. **[Download the latest `.dmg`](https://github.com/lilmelon77/hey-claude/releases/latest)** ↑
+1. **[Download the latest `.dmg`](https://github.com/lilmelon77/hey-claude/releases/latest/download/HeyClaude.dmg)** ↑
 2. Open it and drag **Hey Claude** into **Applications**.
 3. Launch it from Applications (or Spotlight) and follow the short onboarding.
 
