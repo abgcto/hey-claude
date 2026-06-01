@@ -30,10 +30,11 @@ cp "$ROOT/Resources/Fonts/"*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null ||
 
 # Code signing. Prefer the Developer ID identity: a STABLE signature means macOS
 # keeps the microphone/automation TCC grants across rebuilds (no re-prompt churn),
-# and it's the same identity notarization requires. Falls back to ad-hoc on
-# machines without the cert. Override the identity with HEYCLAUDE_SIGN_ID.
-SIGN_ID="${HEYCLAUDE_SIGN_ID:-Developer ID Application: REDACTED}"
-if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_ID"; then
+# and it's the same identity notarization requires. Set HEYCLAUDE_SIGN_ID to your
+# "Developer ID Application: NAME (TEAMID)" identity for a stable signature;
+# leave it unset to ad-hoc sign (works anywhere; TCC grants won't persist).
+SIGN_ID="${HEYCLAUDE_SIGN_ID:-}"
+if [ -n "$SIGN_ID" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_ID"; then
     echo "Signing with: $SIGN_ID"
     codesign --force --deep --sign "$SIGN_ID" "$APP"
 else

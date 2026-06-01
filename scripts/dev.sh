@@ -23,8 +23,14 @@ CONFIG="${1:-debug}"
 pkill -x HeyClaude 2>/dev/null || true
 pkill -x HeyClaudeApp 2>/dev/null || true
 sleep 2
-rm -rf "/Applications/HeyClaude.app"
-cp -R "$ROOT/HeyClaude.app" "/Applications/HeyClaude.app"
+# Update the bundle IN PLACE — do NOT `rm -rf` the .app. Deleting the app makes
+# macOS drop its Input-Monitoring (and Accessibility) TCC grant, so a freshly
+# re-copied bundle is un-granted even with stable signing → push-to-talk dies on
+# every redeploy. rsync syncs the contents while keeping the .app's path/identity,
+# so the grant survives. (Microphone re-matches by signature, which is why only the
+# hotkey was affected.)
+mkdir -p "/Applications/HeyClaude.app"
+rsync -a --delete "$ROOT/HeyClaude.app/" "/Applications/HeyClaude.app/"
 
 # 3. Launch the copy you'll actually use.
 open "/Applications/HeyClaude.app"

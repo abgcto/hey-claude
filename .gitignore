@@ -40,4 +40,7 @@ HeyClaude.app/
 # Release artifacts (assembled by scripts/release.sh) — large, regenerated builds.
 HeyClaude.dmg
 HeyClaude-notarize.zip
+
+# Local agent / harness state — never publish.
 .superpowers/
+.claude/
