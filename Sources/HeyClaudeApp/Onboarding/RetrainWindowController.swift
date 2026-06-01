@@ -39,8 +39,16 @@ final class RetrainWindowController: NSObject, NSWindowDelegate {
         self.model = model
         model.onRetrainComplete = { [weak self] in self?.finishRetrain() }
 
-        let host = NSHostingView(rootView: OnboardingView(model: model))
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 520),
+        // Match the Settings window EXACTLY. The retrain window is
+        // `.fullSizeContentView`, so its content fills the whole frame — sizing both
+        // the OnboardingView and the window to `matchingFrame.size` (Settings' outer
+        // frame, titlebar height included) makes the two windows identical in size,
+        // so no titlebar-height discrepancy and no content-driven resize. The
+        // `setFrame` below then places it at Settings' exact origin. Falls back to
+        // 820×580 when opened without a Settings frame.
+        let size = matchingFrame?.size ?? CGSize(width: 820, height: 580)
+        let host = NSHostingView(rootView: OnboardingView(model: model, windowSize: size))
+        let win = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                            styleMask: [.titled, .closable, .fullSizeContentView],
                            backing: .buffered, defer: false)
         win.titlebarAppearsTransparent = true
@@ -70,7 +78,12 @@ final class RetrainWindowController: NSObject, NSWindowDelegate {
         window = nil
         model = nil
         controller.resumeAfterRetrain()
-        NSApp.setActivationPolicy(.accessory)
+        // Stay `.regular` if another standard window is still open (the Settings
+        // window retrain was launched from sits behind it). The always-on notch
+        // panel is borderless, so it doesn't count. Drop to pure-agent `.accessory`
+        // only when no titled window remains.
+        let standardWindowOpen = NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.titled) }
+        NSApp.setActivationPolicy(standardWindowOpen ? .regular : .accessory)
     }
 
     func windowWillClose(_ notification: Notification) { finishRetrain() }

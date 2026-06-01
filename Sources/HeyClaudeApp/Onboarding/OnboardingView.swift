@@ -8,6 +8,12 @@ import HeyClaudeKit
 struct OnboardingView: View {
     @Bindable var model: OnboardingModel
 
+    /// The fixed content size of the hosting window. `NSHostingView` sizes the
+    /// window to this, so it must match the intended window size. First-run
+    /// onboarding uses the default; retrain (launched from Settings) passes the
+    /// Settings window size so it opens at matching dimensions.
+    var windowSize: CGSize = CGSize(width: 600, height: 520)
+
     /// A disabled editor the user tapped to see *why* it's unavailable. Drives the
     /// name/subtitle area without changing the actual launch target. nil = normal.
     @State private var inspected: EditorKind?
@@ -46,7 +52,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 60)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 600, height: 520)
+        .frame(width: windowSize.width, height: windowSize.height)
         .foregroundStyle(ink)
         .animation(.easeInOut(duration: 0.28), value: model.step)
     }

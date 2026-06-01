@@ -10,17 +10,21 @@ enum PreferencesTheme {
     static let inkSoft = Color(red: 0.612, green: 0.596, blue: 0.561)
     static let inkFaint = Color(red: 0.48, green: 0.47, blue: 0.445)    // 4.8:1 on black
     static let hairStrong = Color(red: 0.216, green: 0.216, blue: 0.239)
+    /// Faint row divider — the hairline drawn under each `SettingsRow` (mockup's
+    /// `rgba(243,242,239,.09)`). Lighter than `hairStrong` (control borders) so the
+    /// in-group dividers read as a quiet rhythm, not boxes.
+    static let hairline = ink.opacity(0.09)
+    /// The single accent — coral, used only to flag an un-granted permission
+    /// (matches the notch's attention coral). Everything else stays monochrome.
+    static let coral = Color(red: 1.0, green: 0.541, blue: 0.420)   // #ff8a6b
 
-    /// Consistent vertical spacing, used by every section so the rhythm matches
-    /// across tabs. `group` = between labelled groups; `row` = label → its content
-    /// and between stacked elements in a group; `list` = within a multi-row control.
-    static let groupSpacing: CGFloat = 28
-    static let rowSpacing: CGFloat = 12
+    /// Vertical spacing tokens. `list` = gap within a multi-row control (the target
+    /// list, the swatch row); `section` = gap between header-led groups, so each
+    /// titled block reads as its own region — the mockup's 38px inter-group margin.
     static let listSpacing: CGFloat = 8
+    static let sectionGap: CGFloat = 38
 
-    /// Strict type scale — three roles, one purpose each, so panes don't sprout
-    /// ad-hoc sizes. Pair with the colour rule below.
-    ///   • label   → `SectionLabel` (tracked caps, `inkFaint`)
+    /// Type roles (pair with the colour rule):
     ///   • body    → primary text: list items, names, the toggle/button label (`ink`)
     ///   • caption → secondary text: explanatory lines, slider bounds (`inkSoft`)
     static var body: Font { gs(13) }
@@ -40,33 +44,95 @@ enum PreferencesTheme {
     }
 }
 
-/// An all-caps tracked section eyebrow (e.g. "WAKE SENSITIVITY").
-struct SectionLabel: View {
-    let text: String
-    init(_ text: String) { self.text = text }
+/// A redesigned section header: a real 17pt title with an optional one-line gray
+/// subtitle beneath. Replaces the tiny tracked `SectionLabel` eyebrow as the
+/// primary grouping device — bigger, sentence-case, with clear air below.
+struct SettingsHeader: View {
+    let title: String
+    let subtitle: String?
+    init(_ title: String, _ subtitle: String? = nil) {
+        self.title = title
+        self.subtitle = subtitle
+    }
     var body: some View {
-        Text(text)
-            .font(PreferencesTheme.gs(10, .medium))
-            .tracking(1.6)
-            .foregroundStyle(PreferencesTheme.inkFaint)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(PreferencesTheme.gs(16, .semibold)).tracking(-0.25)
+                .foregroundStyle(PreferencesTheme.ink)
+            if let subtitle {
+                Text(subtitle)
+                    .font(PreferencesTheme.gs(12))
+                    .foregroundStyle(PreferencesTheme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.bottom, 6)   // air under the header before the first row (mockup)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// A labelled settings group — an eyebrow label over its content, with one
-/// consistent internal gap (`rowSpacing`). Sections stack these `groupSpacing`
-/// apart, so every tab shares the same vertical rhythm.
-struct SettingsGroup<Content: View>: View {
-    let label: String
-    @ViewBuilder var content: () -> Content
-    init(_ label: String, @ViewBuilder content: @escaping () -> Content) {
-        self.label = label
-        self.content = content
+/// One settings line in the redesigned layout: title (+ optional wrapping
+/// description) on the left, a trailing control on the right, and a hairline
+/// divider beneath. Pass `showsDivider: false` on a group's final row so the
+/// rhythm stops at the group edge (mockup's `.row:last-child` rule).
+struct SettingsRow<Control: View>: View {
+    let title: String
+    let description: String?
+    let showsDivider: Bool
+    @ViewBuilder var control: () -> Control
+    init(_ title: String, _ description: String? = nil,
+         showsDivider: Bool = true, @ViewBuilder control: @escaping () -> Control) {
+        self.title = title
+        self.description = description
+        self.showsDivider = showsDivider
+        self.control = control
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: PreferencesTheme.rowSpacing) {
-            SectionLabel(label)
-            content()
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 24) {
+                VStack(alignment: .leading, spacing: 4) {
+                    // 15pt/regular (400) title over a 13pt/regular gray description.
+                    // The title stays lighter than the 17pt Semibold group header so
+                    // the header clearly leads; ink vs gray color separates title from
+                    // description.
+                    Text(title)
+                        .font(PreferencesTheme.gs(14)).tracking(-0.1)
+                        .foregroundStyle(PreferencesTheme.ink)
+                    if let description {
+                        Text(description)
+                            .font(PreferencesTheme.gs(12))
+                            .foregroundStyle(PreferencesTheme.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 16)
+                // Keep the control at its intrinsic width so a long description can
+                // never squeeze it (which made badges/buttons wrap to two lines).
+                control()
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.vertical, 17)   // mockup `.row` padding
+            if showsDivider {
+                Rectangle().fill(PreferencesTheme.hairline).frame(height: 1)
+            }
         }
+    }
+}
+
+/// A permission status pill: `ink` "GRANTED" when allowed, `coral` "NEEDS ACCESS"
+/// when not — the only place the dashboard spends its accent color.
+struct PermissionBadge: View {
+    let granted: Bool
+    var body: some View {
+        Text(granted ? "Granted" : "Needs access")
+            .font(PreferencesTheme.gs(11, .semibold)).tracking(0.6)
+            .textCase(.uppercase)
+            .lineLimit(1)
+            .foregroundStyle(.black)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(granted ? PreferencesTheme.ink : PreferencesTheme.coral))
     }
 }
 
@@ -93,6 +159,7 @@ extension PreferencesTheme {
 private struct HoverHighlight: ViewModifier {
     let cornerRadius: CGFloat
     let enabled: Bool
+    let lift: Bool
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -103,7 +170,7 @@ private struct HoverHighlight: ViewModifier {
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(active ? PreferencesTheme.hoverFill : .clear))
-            .offset(y: active ? PreferencesTheme.hoverLift : 0)
+            .offset(y: (lift && active) ? PreferencesTheme.hoverLift : 0)
             .animation(reduceMotion ? nil : .easeOut(duration: PreferencesTheme.hoverDuration),
                        value: hovering)
             .onHover { hovering = $0 }
@@ -114,9 +181,11 @@ extension View {
     /// Adds the dashboard's hover affordance (slip-up lift + ink fill) to a control.
     /// Place it so the fill sits *under* any selected-state background/stroke.
     /// Pass `enabled: false` for an already-selected control so hover doesn't stack
-    /// a third tint on top of the selected fill.
-    func dashboardHover(cornerRadius: CGFloat, enabled: Bool = true) -> some View {
-        modifier(HoverHighlight(cornerRadius: cornerRadius, enabled: enabled))
+    /// a third tint on top of the selected fill. Pass `lift: false` for a flat hover
+    /// (fill only, no slip-up) — used by the nav rail, where lifting a full-width
+    /// list item reads as wobble rather than the card "pop" the grid cells want.
+    func dashboardHover(cornerRadius: CGFloat, enabled: Bool = true, lift: Bool = true) -> some View {
+        modifier(HoverHighlight(cornerRadius: cornerRadius, enabled: enabled, lift: lift))
     }
 }
 
@@ -157,29 +226,49 @@ struct DashboardToggle: View {
 /// white — a fill tint would be invisible on the already-filled `ink` pill, so the
 /// brightness lift is its equivalent of the row/cell fill.
 struct DashboardButton: View {
+    /// `primary` = the ink-filled pill (a section's main action). `secondary` =
+    /// a bordered, transparent button (incidental actions like Choose / Re-train /
+    /// Open Settings) — quieter, so one ink pill per pane stays the clear lead.
+    enum Style { case primary, secondary }
+
     let title: String
+    let style: Style
     let action: () -> Void
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    init(_ title: String, action: @escaping () -> Void) {
+    init(_ title: String, style: Style = .primary, action: @escaping () -> Void) {
         self.title = title
+        self.style = style
         self.action = action
     }
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(PreferencesTheme.gs(13, .medium))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 20).padding(.vertical, 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 9)
-                        .fill(PreferencesTheme.ink)
-                        .brightness(hovering ? 0.06 : 0))
+                .font(PreferencesTheme.gs(12, .medium))
+                .lineLimit(1)
+                .foregroundStyle(style == .primary ? .black : PreferencesTheme.ink)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(background)
         }
         .buttonStyle(.plain)
         .offset(y: hovering ? PreferencesTheme.hoverLift : 0)
         .animation(reduceMotion ? nil : .easeOut(duration: PreferencesTheme.hoverDuration),
                    value: hovering)
         .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder private var background: some View {
+        switch style {
+        case .primary:
+            RoundedRectangle(cornerRadius: 9)
+                .fill(PreferencesTheme.ink)
+                .brightness(hovering ? 0.06 : 0)
+        case .secondary:
+            RoundedRectangle(cornerRadius: 9)
+                .fill(hovering ? PreferencesTheme.hoverFill : .clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(PreferencesTheme.hairStrong, lineWidth: 1))
+        }
     }
 }

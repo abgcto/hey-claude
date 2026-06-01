@@ -4,7 +4,8 @@ import HeyClaudeKit
 
 /// Launch tab: where Claude Code opens — the target app + the working folder.
 /// Both route to controller setters that restart the pipeline so the next launch
-/// uses the new choice.
+/// uses the new choice. Installed editors missing the Claude Code extension are
+/// shown disabled, so they read as "an option once you add the extension."
 struct LaunchSection: View {
     let controller: AppController
 
@@ -14,23 +15,21 @@ struct LaunchSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PreferencesTheme.groupSpacing) {
-            SettingsGroup("OPEN CLAUDE CODE IN") {
+        VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
+            VStack(spacing: 0) {
+                SettingsHeader("Open Claude Code in",
+                               "The terminal or editor a launch opens in. Editors missing the Claude Code extension are shown greyed.")
                 VStack(spacing: PreferencesTheme.listSpacing) {
-                    ForEach(controller.availableTargets, id: \.self) { target in
-                        targetRow(target)
-                    }
+                    ForEach(controller.availableTargets, id: \.self) { targetRow($0) }
+                    ForEach(controller.unavailableEditors, id: \.self) { disabledRow($0) }
                 }
+                .padding(.top, 14)
             }
-            SettingsGroup("WORKING FOLDER") {
-                HStack(spacing: 12) {
-                    Text(folder)
-                        .font(PreferencesTheme.body)
-                        .foregroundStyle(PreferencesTheme.ink)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 8)
-                    DashboardButton("Choose\u{2026}") { chooseFolder() }
+
+            VStack(spacing: 0) {
+                SettingsHeader("Working folder")
+                SettingsRow("Project folder", folder, showsDivider: false) {
+                    DashboardButton("Choose", style: .secondary) { chooseFolder() }
                 }
             }
             Spacer(minLength: 0)
@@ -50,7 +49,7 @@ struct LaunchSection: View {
                     .foregroundStyle(PreferencesTheme.ink)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
+            .padding(.horizontal, 12).padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 9)
                     .fill(selected ? PreferencesTheme.ink.opacity(0.10) : .clear))
@@ -60,8 +59,26 @@ struct LaunchSection: View {
                             lineWidth: 1))
         }
         .buttonStyle(.plain)
-        // Unselected rows get the hover lift + fill; the selected row keeps its fill.
-        .dashboardHover(cornerRadius: 9, enabled: !selected)
+        // Unselected rows get the hover fill; the selected row keeps its fill.
+        .dashboardHover(cornerRadius: 9, enabled: !selected, lift: false)
+    }
+
+    /// An installed editor that can't be a target yet (no Claude Code extension) —
+    /// shown disabled so it's discoverable, with the reason on the trailing edge.
+    private func disabledRow(_ editor: EditorKind) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "circle")
+                .font(.system(size: 13)).foregroundStyle(PreferencesTheme.inkFaint)
+            Text(LaunchTarget.editor(editor).label)
+                .font(PreferencesTheme.body).foregroundStyle(PreferencesTheme.ink)
+            Spacer(minLength: 12)
+            Text("Needs the Claude Code extension")
+                .font(PreferencesTheme.caption).foregroundStyle(PreferencesTheme.inkFaint)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 9).stroke(PreferencesTheme.hairStrong, lineWidth: 1))
+        .opacity(0.5)
     }
 
     /// Folder picker — same NSOpenPanel config as onboarding's `chooseFolder`.

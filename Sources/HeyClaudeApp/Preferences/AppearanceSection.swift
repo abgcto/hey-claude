@@ -1,11 +1,10 @@
 import SwiftUI
 import HeyClaudeKit
 
-/// Appearance tab: the mascot picker — a live preview of the selected mascot +
-/// color, the gallery of every catalog mascot, and the curated color palette.
-/// (Moved out of the former mascot-only `PreferencesView`; selection still reads
-/// straight from `controller.settings` and routes taps to the controller setters,
-/// which persist and update the live notch island.)
+/// Appearance tab: the mascot picker — the gallery of every catalog mascot, the
+/// curated color palette, and the idle-motion toggle. Selection reads straight from
+/// `controller.settings` and routes taps to the controller setters, which persist
+/// and update the live notch island.
 struct AppearanceSection: View {
     let controller: AppController
 
@@ -18,39 +17,32 @@ struct AppearanceSection: View {
 
     private var selectedID: String { controller.settings.mascotID }
     private var selectedHex: String { controller.settings.mascotColorHex }
-    private var selectedMascot: Mascot { MascotCatalog.byID(selectedID) }
     private var bodyColor: Color { Color(hex: selectedHex) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PreferencesTheme.groupSpacing) {
-            SettingsGroup("MASCOT") { gallery }
-            SettingsGroup("COLOR") { swatchRow }
-            SettingsGroup("ANIMATION") { idleToggle }
+        VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
+            VStack(spacing: 0) {
+                SettingsHeader("Mascot", "The character that lives in your notch.")
+                gallery.padding(.top, 14)
+            }
+            VStack(spacing: 0) {
+                SettingsHeader("Color")
+                swatchRow.padding(.top, 14)
+            }
+            VStack(spacing: 0) {
+                SettingsHeader("Motion")
+                SettingsRow("Playful animations",
+                            "Subtle idle motion so the mascot feels alive in the notch. Off automatically when macOS Reduce Motion is on.",
+                            showsDivider: false) {
+                    DashboardToggle(isOn: Binding(
+                        get: { controller.settings.mascotIdleAnimations },
+                        set: { controller.setMascotIdleAnimations($0) }))
+                }
+                .accessibilityElement(children: .combine)
+            }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// "Playful animations" — ambient idle mascot motion (blink/breathe/gestures).
-    /// Persisted via the controller, hot-swapped into the live notch. System Reduce
-    /// Motion overrides it off regardless of this switch.
-    private var idleToggle: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Text("Playful animations")
-                    .font(PreferencesTheme.body)
-                    .foregroundStyle(PreferencesTheme.ink)
-                DashboardToggle(isOn: Binding(
-                    get: { controller.settings.mascotIdleAnimations },
-                    set: { controller.setMascotIdleAnimations($0) }))
-            }
-            // Merge label + switch into one VoiceOver element ("Playful animations,
-            // On, switch") since the visible label lives outside the toggle.
-            .accessibilityElement(children: .combine)
-            Text("Subtle idle motion so the mascot feels alive in the notch. Off automatically when macOS Reduce Motion is on.")
-                .font(PreferencesTheme.caption)
-                .foregroundStyle(PreferencesTheme.inkSoft)
-        }
     }
 
     /// One tappable square per catalog mascot; the live selection wears a ring.
@@ -84,20 +76,17 @@ struct AppearanceSection: View {
         .accessibilityLabel(m.displayName)
     }
 
-    /// The 8 curated swatches in one row. Sized + spaced to fit the pane width so
-    /// the row can't overflow and shove the fixed sidebar.
+    /// The 8 curated swatches in one row.
     private var swatchRow: some View {
         HStack(spacing: PreferencesTheme.listSpacing) {
-            ForEach(palette, id: \.hex) { swatch in swatchButton(swatch) }
+            ForEach(palette, id: \.hex) { swatch in
+                SwatchButton(
+                    swatch: swatch,
+                    selected: swatch.hex.caseInsensitiveCompare(selectedHex) == .orderedSame,
+                    action: { controller.setMascotColor(hex: swatch.hex) })
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func swatchButton(_ swatch: (name: String, hex: String)) -> some View {
-        SwatchButton(
-            swatch: swatch,
-            selected: swatch.hex.caseInsensitiveCompare(selectedHex) == .orderedSame,
-            action: { controller.setMascotColor(hex: swatch.hex) })
     }
 }
 

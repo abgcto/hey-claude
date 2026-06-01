@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// General tab: app-level settings — launch at login + an About line.
+/// General tab: app-level behavior — launch at login — with an About block.
 struct GeneralSection: View {
     let controller: AppController
 
@@ -9,12 +9,12 @@ struct GeneralSection: View {
     @State private var launchAtLogin: Bool = LoginItem.isEnabled
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PreferencesTheme.groupSpacing) {
-            SettingsGroup("STARTUP") {
-                HStack(spacing: 10) {
-                    Text("Launch at login")
-                        .font(PreferencesTheme.body)
-                        .foregroundStyle(PreferencesTheme.ink)
+        VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
+            VStack(spacing: 0) {
+                SettingsHeader("General")
+                SettingsRow("Launch at login",
+                            "Automatically start Hey Claude when you log in to your Mac.",
+                            showsDivider: false) {
                     DashboardToggle(isOn: Binding(
                         get: { launchAtLogin },
                         set: { on in LoginItem.setEnabled(on); launchAtLogin = LoginItem.isEnabled }))
@@ -22,9 +22,7 @@ struct GeneralSection: View {
                 .accessibilityElement(children: .combine)   // one VO element: label + switch
             }
 
-            Spacer(minLength: 0)
-
-            // About line, pinned to the bottom.
+            // About — a quiet footer set off by a hairline.
             VStack(alignment: .leading, spacing: 4) {
                 Text("Hey Claude")
                     .font(PreferencesTheme.bodyMedium)
@@ -33,8 +31,11 @@ struct GeneralSection: View {
                     .font(PreferencesTheme.caption)
                     .foregroundStyle(PreferencesTheme.inkSoft)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 22)
+            .overlay(Rectangle().fill(PreferencesTheme.hairline).frame(height: 1), alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { launchAtLogin = LoginItem.isEnabled }
     }
 }

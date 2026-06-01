@@ -30,10 +30,14 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         }
 
         let host = NSHostingView(rootView: PreferencesView(controller: controller))
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 520),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 580),
                            styleMask: [.titled, .closable],
                            backing: .buffered, defer: false)
-        win.title = "Hey Claude Settings"
+        win.title = "Hey Claude Settings"   // kept for the Window menu / Mission Control
+        // Hide the native title text + blend the titlebar into the black canvas, so
+        // the rail's own "Settings" heading reads as the title (matches the mockup).
+        win.titleVisibility = .hidden
+        win.titlebarAppearsTransparent = true
         win.backgroundColor = .black
         // The notch panel toggles its own click-through from `.mouseMoved` monitors.
         // A key window that doesn't emit mouse-moved events freezes those monitors,
