@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pre-roll + endpoint capture state machine (promoted from the Phase 1 spike).
+/// Pre-roll + endpoint capture state machine.
 /// While listening, retains a rolling lookback. On `fire()` it seeds the
 /// captured buffer with that lookback (so a command spoken in the same breath
 /// as the wake word is not lost), then accumulates until the speaker endpoints

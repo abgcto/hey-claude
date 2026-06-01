@@ -30,4 +30,11 @@ public final class ManualCaptureFlag: @unchecked Sendable {
 
     /// When capture ends, discard instead of emit? (read on the audio queue)
     public var shouldCancel: Bool { lock.withLock { $0.cancel } }
+
+    /// Read both fields in one lock — prevents a rapid press() between two
+    /// separate reads from tearing the decision in onFrame (active seen from
+    /// the old release, shouldCancel seen from the new press → wrong path).
+    public func snapshot() -> (active: Bool, shouldCancel: Bool) {
+        lock.withLock { ($0.active, $0.cancel) }
+    }
 }

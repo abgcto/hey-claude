@@ -495,7 +495,7 @@ func probeEditorOpenLive(_ editor: EditorKind) -> Bool {
         print("FAIL    \(f.localizedDescription)")
         return false
     case .none:
-        print("FAIL    no result (async openApp not awaited)")
+        print("FAIL    no result (completion not called)")
         return false
     }
 }

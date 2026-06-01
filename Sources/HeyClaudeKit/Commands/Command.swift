@@ -5,7 +5,8 @@ public enum CommandKind: Codable, Equatable, Sendable {
     /// Run a command in a terminal. `commandTemplate` may contain `{prompt}`,
     /// replaced by the spoken trailing prompt (or removed if none).
     case runCLI(commandTemplate: String)
-    /// Open an app by bundle identifier.
+    /// Legacy: open an app by bundle identifier. Retained for backward-compatible
+    /// decode of old settings files; executing one produces `.appNotFound`.
     case openApp(bundleID: String)
     /// Run an arbitrary shell command (no terminal window).
     case runShell(script: String)

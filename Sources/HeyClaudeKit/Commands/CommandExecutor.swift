@@ -2,37 +2,32 @@ import AppKit
 import Foundation
 
 /// Executes a resolved Command. Side effects are injected so it's testable
-/// (mock launcher, openApp, runShell, openURL) and the real defaults live in
-/// one place.
+/// (mock launcher, runShell, openURL) and the real defaults live in one place.
 ///
 /// `execute` reports its outcome through a `completion` closure rather than a
 /// synchronous `throws`: launch failures arrive on two clocks — terminal/editor
-/// failures are synchronous, but `openApp`'s real error comes back on
-/// `NSWorkspace.openApplication`'s async callback. One `Result` channel captures
-/// both. The typed `LaunchFailure` crosses to the caller intact (it's `Sendable`)
-/// so the UI can show a specific, actionable message — never a bare `Bool`.
+/// failures are synchronous, but deep-link success is best-effort. One `Result`
+/// channel captures both. The typed `LaunchFailure` crosses to the caller intact
+/// (it's `Sendable`) so the UI can show a specific, actionable message — never a
+/// bare `Bool`.
 public struct CommandExecutor: Sendable {
     private let settings: Settings
     private let launcherFor: @Sendable (TerminalKind) -> TerminalLauncher
-    private let openApp: @Sendable (String, @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) -> Void
     private let runShell: @Sendable (String) throws -> Void
     private let openURL: @Sendable (URL) -> Bool
 
     public init(settings: Settings,
                 launcherFor: @escaping @Sendable (TerminalKind) -> TerminalLauncher,
-                openApp: @escaping @Sendable (String, @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) -> Void = CommandExecutor.defaultOpenApp,
                 runShell: @escaping @Sendable (String) throws -> Void = CommandExecutor.defaultRunShell,
                 openURL: @escaping @Sendable (URL) -> Bool = CommandExecutor.defaultOpenURL) {
         self.settings = settings
         self.launcherFor = launcherFor
-        self.openApp = openApp
         self.runShell = runShell
         self.openURL = openURL
     }
 
     /// Runs the command and reports success or a typed failure via `completion`.
-    /// Synchronous paths call `completion` inline; the `openApp` path calls it from
-    /// the OS's async launch callback.
+    /// All paths call `completion` inline (synchronous).
     public func execute(_ command: Command, prompt: String?,
                         completion: @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) {
         switch command.kind {
@@ -54,7 +49,10 @@ public struct CommandExecutor: Sendable {
                                         : .failure(.editorDeepLinkRejected(editor)))
             }
         case .openApp(let bundleID):
-            openApp(bundleID, completion)
+            // Legacy path — the "open Claude desktop app" command was removed.
+            // Retained as a decodable case for backward compat with old settings
+            // files; any that survive migration fail here rather than crashing.
+            completion(.failure(.appNotFound(bundleID)))
         case .runShell(let script):
             do { try runShell(script); completion(.success(())) }
             catch { completion(.failure(.shellFailed(error.localizedDescription))) }
@@ -96,19 +94,6 @@ public struct CommandExecutor: Sendable {
         return (exe, nil)
     }
 
-    /// Finds the app bundle (sync — nil → `.appNotFound`), then launches it and
-    /// reports the OS's async launch error (→ `.appLaunchFailed`) authoritatively.
-    public static func defaultOpenApp(_ bundleID: String,
-                                      _ completion: @escaping @Sendable (Result<Void, LaunchFailure>) -> Void) {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            completion(.failure(.appNotFound(bundleID)))
-            return
-        }
-        NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, err in
-            if let err { completion(.failure(.appLaunchFailed(err.localizedDescription))) }
-            else { completion(.success(())) }
-        }
-    }
     public static func defaultRunShell(_ script: String) throws {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")

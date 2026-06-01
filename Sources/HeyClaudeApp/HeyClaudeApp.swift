@@ -3,9 +3,9 @@ import AppKit
 import Observation
 import HeyClaudeKit
 
-/// Hey Claude menu-bar app (Phase 3A). Pure AppKit entry point: a plain
-/// `NSApplication` in `.accessory` mode with an `NSStatusItem` — NOT a SwiftUI
-/// `MenuBarExtra` and NOT a SwiftUI `App` scene.
+/// Hey Claude — pure AppKit entry point: a plain `NSApplication` in `.accessory`
+/// mode with an `NSStatusItem` — NOT a SwiftUI `MenuBarExtra` and NOT a SwiftUI
+/// `App` scene.
 ///
 /// Why: `MenuBarExtra` is the app's only scene, so when macOS can't place its
 /// status item (full menu bar, or launch-throttling) it removes the item and the

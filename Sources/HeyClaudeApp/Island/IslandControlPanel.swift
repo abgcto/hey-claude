@@ -89,7 +89,7 @@ struct IslandControlPanel: View {
             Text("Microphone access needed").font(.system(size: 12)).foregroundStyle(ink)
             Spacer(minLength: 6)
         }
-        .padding(.horizontal, 13).padding(.vertical, 6)
+        .padding(.horizontal, 18).padding(.vertical, 6)
         row(icon: "arrow.up.forward", title: "Fix mic access…") { collapse(); controls.fixMic() }
         divider()
         settingsAndQuit
@@ -149,14 +149,14 @@ struct IslandControlPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 13).padding(.vertical, 2)
+        .padding(.horizontal, 18).padding(.vertical, 2)
         if let label = f.remedyLabel, let remedy = f.remedy {
             row(icon: "arrow.up.forward", title: label) { collapse(); remedy() }
         } else if let hint = f.hint {
             Text(hint).font(.system(size: 10.5)).foregroundStyle(dim)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 13).padding(.top, 1)
+                .padding(.horizontal, 18).padding(.top, 1)
         }
     }
 
@@ -168,14 +168,14 @@ struct IslandControlPanel: View {
                 .lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 6)
         }
-        .padding(.horizontal, 13).padding(.vertical, 3)
+        .padding(.horizontal, 18).padding(.vertical, 3)
     }
 
     private func sectionLabel(_ t: String) -> some View {
         Text(t).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(dim)
             .textCase(.uppercase).kerning(0.4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 13).padding(.top, 2).padding(.bottom, 1)
+            .padding(.horizontal, 18).padding(.top, 2).padding(.bottom, 1)
     }
 
     private var hairline: some View {
@@ -199,7 +199,7 @@ struct IslandControlPanel: View {
                 Image(systemName: chevron).font(.system(size: 9, weight: .semibold)).foregroundStyle(dim)
             }
         }
-        .padding(.horizontal, 13).padding(.vertical, 6)
+        .padding(.horizontal, 18).padding(.vertical, 6)
         .contentShape(Rectangle())
         .modifier(HoverFill())
         .onTapGesture(perform: action)
@@ -213,7 +213,7 @@ struct IslandControlPanel: View {
                 .font(.system(size: 11.5)).foregroundStyle(t == controls.current ? ink : dim)
             Spacer(minLength: 6)
         }
-        .padding(.leading, 26).padding(.trailing, 13).padding(.vertical, 5)
+        .padding(.leading, 31).padding(.trailing, 18).padding(.vertical, 5)
         .contentShape(Rectangle())
         .modifier(HoverFill())
         .onTapGesture {
@@ -231,7 +231,13 @@ private struct HoverFill: ViewModifier {
     @State private var hovering = false
     func body(content: Content) -> some View {
         content
-            .background(hovering ? Color.white.opacity(0.07) : Color.clear)
+            // Rounded "pill" highlight, inset from the panel edges so the corners
+            // read cleanly (macOS-menu style) instead of a full-width square bar.
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(hovering ? Color.white.opacity(0.07) : Color.clear)
+                    .padding(.horizontal, 12)
+            )
             .onHover { hovering = $0 }
     }
 }

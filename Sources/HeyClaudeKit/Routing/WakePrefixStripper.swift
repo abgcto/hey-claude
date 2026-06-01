@@ -2,8 +2,7 @@ import Foundation
 
 /// Strips the leading wake phrase from a full transcript, returning only the
 /// trailing command (or nil for a bare "hey claude"). The ASR renders "claude"
-/// as "cloud"/"claud"/etc., so we match a small variant set. Promoted from the
-/// Phase 1 spike (Sources/heyclaude-spike) into tested HeyClaudeKit code.
+/// as "cloud"/"claud"/etc., so we match a small variant set.
 public enum WakePrefixStripper {
     private static let wakeMarkers: Set<String> =
         ["claude", "cloud", "claud", "clawed", "clode", "clawd", "clod"]

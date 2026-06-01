@@ -16,13 +16,9 @@ final class CommandExecutorTests: XCTestCase {
         func launch(_ spec: LaunchSpec) throws { throw error }
     }
 
-    /// Adapts the old simple test doubles to the new seams: `openApp` reports
-    /// success after recording the bundle, `runShell` is non-throwing.
     private func exec(_ mock: TerminalLauncher,
-                      openedApps: @escaping @Sendable (String) -> Void = { _ in },
                       ranShell: @escaping @Sendable (String) -> Void = { _ in }) -> CommandExecutor {
         CommandExecutor(settings: .default, launcherFor: { _ in mock },
-                        openApp: { bundle, done in openedApps(bundle); done(.success(())) },
                         runShell: { ranShell($0) })
     }
 
@@ -31,7 +27,7 @@ final class CommandExecutorTests: XCTestCase {
                      prompt: String?) -> Result<Void, LaunchFailure> {
         let box = Box<Result<Void, LaunchFailure>?>(nil)
         executor.execute(command, prompt: prompt) { box.value = $0 }
-        return box.value ?? .failure(.appNotFound("no result delivered"))
+        return box.value ?? .failure(.shellFailed("no result delivered"))
     }
 
     /// `Result<Void, _>` can't be `Equatable` (Void isn't), so compare the unwrapped
@@ -61,13 +57,16 @@ final class CommandExecutorTests: XCTestCase {
         let sh = mock.launched.first!.shellCommand()
         XCTAssertTrue(sh.contains("claude") && !sh.contains("{prompt}") && !sh.contains("''"))
     }
-    func test_openApp_callsOpenWithBundleID() {
-        let opened = Box<String?>(nil)
-        let result = run(exec(MockLauncher(), openedApps: { opened.value = $0 }),
+    func test_openApp_command_reportsNotFound() {
+        // openApp was the legacy "open Claude desktop app" path — removed.
+        // Surviving commands from old settings files fail here rather than crash.
+        let result = run(exec(MockLauncher()),
                          Command(id: "a", label: "App", triggers: [], kind: .openApp(bundleID: "com.x.y")),
                          prompt: nil)
-        XCTAssertEqual(opened.value, "com.x.y")
-        XCTAssertNoThrow(try result.get())
+        guard case .failure(.appNotFound(let id)) = result else {
+            return XCTFail("expected .appNotFound for a legacy openApp command")
+        }
+        XCTAssertEqual(id, "com.x.y")
     }
     func test_runShell_callsRunWithScript() {
         let ran = Box<String?>(nil)
@@ -130,12 +129,6 @@ final class CommandExecutorTests: XCTestCase {
         XCTAssertTrue(mock.launched.isEmpty)       // and NO silent terminal fallback
         assertFailure(result, .editorIntegrationMissing(.cursor))
     }
-    func test_openApp_launchError_reportsTypedFailure() {
-        let executor = CommandExecutor(settings: .default, launcherFor: { _ in MockLauncher() },
-                                       openApp: { _, done in done(.failure(.appLaunchFailed("boom"))) })
-        let cmd = Command(id: "a", label: "App", triggers: [], kind: .openApp(bundleID: "com.x.y"))
-        assertFailure(run(executor, cmd, prompt: nil), .appLaunchFailed("boom"))
-    }
     func test_runShell_throws_reportsShellFailure() {
         struct Boom: Error {}
         let executor = CommandExecutor(settings: .default, launcherFor: { _ in MockLauncher() },
@@ -155,7 +148,6 @@ final class CommandExecutorTests: XCTestCase {
             .editorDeepLinkRejected(.cursor),
             .editorIntegrationMissing(.vscode),
             .appNotFound("com.x.y"),
-            .appLaunchFailed("boom"),
             .shellFailed("nope"),
         ]
         for f in cases {

@@ -18,6 +18,7 @@ final class PushToTalkController {
     private var runLoopSource: CFRunLoopSource?
     private var healthTimer: Timer?
     private var isHeld = false
+    private var prevFlags: CGEventFlags = []
 
     init(controller: AppController, key: PushToTalkKey) {
         self.controller = controller
@@ -78,12 +79,19 @@ final class PushToTalkController {
         runLoopSource = nil
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         tap = nil
-        // If the key was held when we tore down, don't leave capture stuck.
+        prevFlags = []
         if isHeld { isHeld = false; controller?.pushToTalkReleased() }
     }
 
     /// Swap the trigger key (from Settings) — rebuilds the tap state machine.
-    func setKey(_ newKey: PushToTalkKey) { key = newKey; isHeld = false }
+    /// Guards a mid-hold swap: setKey used to just zero isHeld without calling
+    /// pushToTalkReleased(), leaving ManualCaptureFlag.active stuck true and
+    /// triggering a continuous capture loop until process restart.
+    func setKey(_ newKey: PushToTalkKey) {
+        if isHeld { isHeld = false; controller?.pushToTalkReleased() }
+        key = newKey
+        prevFlags = []
+    }
 
     // Delivered on the main run loop (we added the source to `CFRunLoopGetMain()`),
     // so this is effectively main-actor work; hop explicitly to satisfy isolation.
@@ -114,19 +122,31 @@ final class PushToTalkController {
 
     /// Decide press vs release from the modifier flags + which key changed.
     /// Held = the trigger's keycode changed AND all required modifier flags are
-    /// present. Released = any required flag dropped while we were held.
+    /// present. Released = the trigger keycode changed AND a required flag dropped.
     private func decodeEdge(flags: CGEventFlags, keycode: Int64) {
+        defer { prevFlags = flags }
+
         let primaryDown = flags.contains(key.requiredModifierFlag)
         let secondaryDown = key.secondaryModifierFlag.map { flags.contains($0) } ?? true
         let allDown = primaryDown && secondaryDown
         let isOurKey = keycode == key.keycode
 
         if !isHeld {
-            // Rising edge: our key's flagsChanged with all required modifiers set.
-            if allDown && isOurKey { isHeld = true; controller?.pushToTalkPressed() }
+            if allDown && isOurKey {
+                // Ghost-press guard for bare modifier keys: if another key (e.g. Left
+                // Option while we're bound to Right Option) already set the same
+                // modifier flag before our keycode fired, this is not a real press.
+                // Chord keys intentionally skip this check — their primary modifier
+                // IS held first by design.
+                let isGhost = key.secondaryModifierFlag == nil
+                    && prevFlags.contains(key.requiredModifierFlag)
+                if !isGhost { isHeld = true; controller?.pushToTalkPressed() }
+            }
         } else {
-            // Falling edge: a required modifier dropped.
-            if !allDown { isHeld = false; controller?.pushToTalkReleased() }
+            // Falling edge: require our keycode changed — chord keys may release a
+            // non-trigger modifier first; waiting for the trigger key prevents the
+            // clip from being emitted while a finger is still physically held down.
+            if !allDown && isOurKey { isHeld = false; controller?.pushToTalkReleased() }
         }
     }
 }

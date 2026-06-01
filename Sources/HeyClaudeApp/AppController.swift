@@ -23,14 +23,14 @@ private func logRoute(_ o: VoiceSession.Outcome) {
     }
 }
 
-/// Owns the Phase 2 voice pipeline (`AudioCapture → WakeWordEngine →
+/// Owns the voice pipeline (`AudioCapture → WakeWordEngine →
 /// CaptureSession → VoiceSession → CommandExecutor`) and publishes a single
-/// `AppState` for the menu-bar icon and menu to render.
+/// `AppState` for the notch island and menu to render.
 ///
 /// Threading: the `AudioCapture` callback runs on `AudioCapture`'s serial
-/// queue. `CaptureSession` and `WakeWordEngine` are driven on that queue (the
-/// Phase 1 audio-isolation rule — never hop them to the main actor, or frames
-/// drop / the real-time thread crashes). Only `emit(...)` and other UI-state
+/// queue. `CaptureSession` and `WakeWordEngine` are driven on that queue
+/// (audio-isolation rule — never hop them to the main actor, or frames drop /
+/// the real-time thread crashes). Only `emit(...)` and other UI-state
 /// mutations hop to `@MainActor`.
 @MainActor
 @Observable
@@ -375,7 +375,7 @@ final class AppController {
                 execute: { [weak self] cmd, prompt in
                     // VoiceSession runs `execute` on the audio queue; perform the
                     // launch there, then report the typed outcome to the UI on main.
-                    // `completion` fires inline for terminal/editor, async for openApp.
+                    // `completion` fires inline for terminal/editor.
                     executor.execute(cmd, prompt: prompt) { result in
                         if case .failure(let failure) = result {
                             Log.launch.error("launch failed: \(failure.localizedDescription, privacy: .public)")
@@ -417,18 +417,37 @@ final class AppController {
             self.capture = capture
 
             // The closure captures the pipeline components as locals (never the
-            // main-actor `self` for audio work) — the Phase 1 isolation rule.
+            // main-actor `self` for audio work) — the audio-isolation rule.
+            //
+            // prevActive tracks the active flag from the previous frame so we only
+            // call fireManual() on the rising edge (active false→true). Without this
+            // the safety cap in CaptureSession.feedWhileCapturing resets state to
+            // .listening while the key is still held, causing fireManual() to re-fire
+            // on the very next frame and launch a second Claude session.
+            var prevActive = false
             let audio = try AudioCapture(onFrame: { [weak self] frame in
                 // Runs on AudioCapture's serial queue. AudioCapture itself drops
                 // frames while muted, so no mute check is needed here.
-                let active = self?.manualFlag.active ?? false
+                //
+                // Snapshot reads active + shouldCancel in one lock: a rapid
+                // press() between two separate reads would tear the decision
+                // (active from the release, shouldCancel from the new press →
+                // manualEndpoint() fires on the new hold instead of discarding).
+                let (active, shouldCancel) = self?.manualFlag.snapshot() ?? (false, false)
+                defer { prevActive = active }
 
                 switch capture.state {
                 case .listening:
-                    if active {
+                    if active && !prevActive {
+                        // Rising edge only — don't re-fire after the safety cap
+                        // resets state to .listening while the key is still held.
                         mode.manual = true
                         capture.fireManual()                          // push-to-talk press
                         Task { @MainActor in self?.emit(.wakeFired) }  // reuse the listening visual
+                    } else if active {
+                        // Key still held after safety cap: maintain preroll so the
+                        // next deliberate press (release + re-press) has audio context.
+                        capture.feedWhileListening(frame)
                     } else {
                         capture.feedWhileListening(frame)
                         if wake.feed(frame) {
@@ -442,7 +461,7 @@ final class AppController {
                         // Hold ended: Esc-cancel discards the clip; a normal
                         // release sends it. `pushToTalkCancelled` already settled
                         // the UI, so the discard path stays silent here.
-                        if self?.manualFlag.shouldCancel == true {
+                        if shouldCancel {
                             capture.manualCancel()                    // Esc → discard
                         } else {
                             capture.manualEndpoint()                  // release → send
@@ -495,6 +514,10 @@ final class AppController {
     /// Called before the onboarding window opens (a no-op on first run, since the
     /// pipeline hasn't started). `restartPipeline()` reuses it for re-(boot).
     func suspendForOnboarding() {
+        // Clear before nil-ing audio: pushToTalkReleased() may have enqueued an
+        // async re-mute block; if ptHeldUnmute is still true when that block fires
+        // after restartPipeline() builds the new pipeline, it force-mutes it.
+        ptHeldUnmute = false
         audio?.stop(); audio = nil
         wake = nil; transcriber = nil; capture = nil; voice = nil; executor = nil
         didStart = false
@@ -693,10 +716,9 @@ final class AppController {
         }
     }
 
-    /// Resolves the models directory. Prefers the app bundle's `Models/`
-    /// (Phase 3B packaging); falls back to the repo `Models/` next to the
-    /// current working directory (Phase 3A `swift run`). Returns the first that
-    /// actually contains the KWS model directory.
+    /// Resolves the models directory. Prefers the app bundle's `Models/`;
+    /// falls back to the repo `Models/` next to the current working directory
+    /// (dev `swift run`). Returns the first that actually contains the KWS model directory.
     private func resolveModelsDir() -> URL? {
         let kwsDir = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
         var candidates: [URL] = []

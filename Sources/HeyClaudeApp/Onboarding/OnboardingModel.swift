@@ -112,15 +112,20 @@ final class OnboardingModel {
     // MARK: - Navigation
 
     func goToMic() {
-        // Pre-check on arrival so a user who already denied mic access sees the
-        // "Open System Settings" affordance immediately — not a dead "Allow
-        // microphone" they have to click first to discover it does nothing.
-        let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        micDenied = (status == .denied || status == .restricted)
-        if micDenied {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            // Already granted (e.g. macOS pre-prompted at launch) — skip the
+            // button step entirely; go straight to training.
+            micGranted = true
+            step = .train
+            beginTraining()
+        case .denied, .restricted:
+            micDenied = true
             statusLine = "Microphone access is needed — enable it in System Settings \u{25B8} Privacy \u{25B8} Microphone."
+            step = .mic
+        default:
+            step = .mic
         }
-        step = .mic
     }
 
     func requestMicAndTrain() {
@@ -221,6 +226,12 @@ final class OnboardingModel {
     private func handleClip(_ clip: [Float], kind: WakeEnrollment.Sample.Kind, kwsDir: URL?) {
         isRecording = false
         isSpeaking = false
+        // Stop explicitly before releasing — EnrollmentRecorder's self-stop is
+        // [weak self] async, so if we nil the ref first it can be deallocated
+        // before stop() runs, leaving AVAudioEngine running without a proper
+        // teardown. The next rep then creates a fresh engine whose first
+        // inputNode query triggers a repeat system mic-permission dialog.
+        recorder?.stop()
         recorder = nil
         guard let kwsDir else { statusLine = "Models missing"; return }
         Task.detached {

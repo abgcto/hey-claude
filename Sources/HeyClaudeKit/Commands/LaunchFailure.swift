@@ -24,10 +24,9 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
     /// A `runCLI` editor target reached the executor without integration data.
     /// Defensive — `Settings` backfills this; should not happen in practice.
     case editorIntegrationMissing(EditorKind)
-    /// The app bundle to open could not be found on disk.
+    /// A legacy `openApp` command was decoded from an old settings file; the app
+    /// path is no longer supported, so the bundle ID is reported and execution stops.
     case appNotFound(String)
-    /// The app was found but the OS reported a launch error (async callback).
-    case appLaunchFailed(String)
     /// A `runShell` command failed to spawn.
     case shellFailed(String)
 
@@ -43,9 +42,7 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
         case .editorIntegrationMissing(let e):
             return "Missing Claude Code integration for \(e.rawValue)."
         case .appNotFound:
-            return "Couldn’t find the app to open."
-        case .appLaunchFailed(let msg):
-            return "The app failed to launch — \(msg)"
+            return "This command type is no longer supported."
         case .shellFailed(let msg):
             return "The command failed to run — \(msg)"
         }
@@ -64,9 +61,7 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
             return "Needs \(e.rawValue) + the Claude Code extension."
         case .editorIntegrationMissing:
             return "Reinstall or reset settings."
-        case .appNotFound:
-            return "Reinstall the target app."
-        case .appLaunchFailed, .shellFailed:
+        case .appNotFound, .shellFailed:
             return nil
         }
     }
@@ -95,8 +90,7 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
         case .terminalAutomationFailed(let k, _): return "Couldn’t control \(k.rawValue)"
         case .editorDeepLinkRejected(let e): return "Couldn’t open \(e.rawValue)"
         case .editorIntegrationMissing(let e):    return "\(e.rawValue) not set up"
-        case .appNotFound:                   return "App not found"
-        case .appLaunchFailed:               return "Launch failed"
+        case .appNotFound:                   return "Command unsupported"
         case .shellFailed:                   return "Command failed"
         }
     }

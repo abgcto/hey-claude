@@ -3,8 +3,8 @@ import Foundation
 
 /// Live microphone capture → 16 kHz mono Float frames on a serial queue.
 /// `@unchecked Sendable`: all mutable state is confined to `queue`; the tap
-/// closure captures only `self` (never a main-actor global) — the Phase 1
-/// rule that avoids the real-time-thread isolation crash.
+/// closure captures only `self` (never a main-actor global) — required to avoid
+/// the real-time-thread isolation crash.
 public final class AudioCapture: @unchecked Sendable {
     public enum CaptureError: Swift.Error { case audioFormat }
 

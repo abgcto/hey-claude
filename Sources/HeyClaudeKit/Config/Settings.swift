@@ -125,8 +125,9 @@ public struct Settings: Codable, Equatable, Sendable {
         let rawDefault = try container.decodeIfPresent(String.self, forKey: .defaultCommandID)
             ?? "claude-code"
         self.defaultCommandID = (rawDefault == "claude-desktop") ? "claude-code" : rawDefault
-        self.promptCommandID = try container.decodeIfPresent(String.self, forKey: .promptCommandID)
+        let rawPrompt = try container.decodeIfPresent(String.self, forKey: .promptCommandID)
             ?? "claude-code"
+        self.promptCommandID = (rawPrompt == "claude-desktop") ? "claude-code" : rawPrompt
         // (legacy `islandVisible` keys in old settings JSON are ignored — the island
         // is always present now.)
         self.onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted)
