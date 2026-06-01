@@ -24,6 +24,10 @@ Because I got really, really tired of typing `claude` a hundred times a day ♡
 
 <sub>Notarized `.dmg` · Apple Silicon · macOS 14.4+ · no build required</sub>
 
+<br><br>
+
+<video src="https://github.com/lilmelon77/hey-claude/raw/main/assets/demo.mp4" width="820" autoplay loop muted playsinline controls></video>
+
 </div>
 
 ---
