@@ -27,6 +27,14 @@ site/
 web/
 .playwright-mcp/
 
+# Private working docs — kept local-only (per the OSS plan). Dated planning
+# docs, session/feature handovers, and HTML mockups are scratch; the curated
+# docs/design/ ("why" decisions) and docs/reference/ (build internals) stay
+# tracked so a fresh clone can build and contribute.
+docs/plans/
+docs/handovers/
+docs/mockups/
+
 # Built app bundle (assembled by scripts/bundle-app.sh)
 HeyClaude.app/
 # Release artifacts (assembled by scripts/release.sh) — large, regenerated builds.

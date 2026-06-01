@@ -17,8 +17,8 @@ let package = Package(
     ],
     targets: [
         // Prebuilt sherpa-onnx static xcframework (universal2 macOS).
-        // Downloaded + module map injected by hand (gitignored); see
-        // internal design notes for the reproducible setup.
+        // Fetched + module map injected by `scripts/fetch-sherpa.sh` (gitignored);
+        // see internal design notes for the reproducible setup.
         .binaryTarget(
             name: "CSherpaOnnx",
             path: "Sources/CSherpaOnnx/sherpa-onnx.xcframework"
