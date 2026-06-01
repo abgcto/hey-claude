@@ -1,0 +1,32 @@
+Hey Claude
+Copyright (c) 2026 lilmelon77
+
+This product is licensed under the GNU General Public License v3.0 (see LICENSE).
+It includes and/or builds upon the following third-party components, each under
+its own license:
+
+------------------------------------------------------------------------------
+sherpa-onnx — https://github.com/k2-fsa/sherpa-onnx
+  Copyright (c) 2023 Xiaomi Corporation
+  Licensed under the Apache License, Version 2.0.
+  The Swift binding in Sources/HeyClaudeKit/SherpaOnnx.swift is adapted from the
+  upstream project. The prebuilt static xcframework is fetched at build time by
+  scripts/fetch-sherpa.sh and is not redistributed in this repository.
+
+ONNX Runtime — https://github.com/microsoft/onnxruntime
+  Copyright (c) Microsoft Corporation
+  Licensed under the MIT License.
+  Linked into the sherpa-onnx static library (see scripts/fetch-sherpa.sh).
+
+Speech models (fetched at build time by scripts/fetch-models.sh; not redistributed):
+  - KWS zipformer (gigaspeech) and NeMo Parakeet TDT, distributed via the
+    k2-fsa/sherpa-onnx model releases, under their respective upstream licenses.
+
+General Sans (font) — https://www.fontshare.com/fonts/general-sans
+  Copyright (c) 2017-2021 Indian Type Foundry
+  ITF Free Font License. NOT redistributed here (the license forbids sharing the
+  font files); the app falls back to the system font when the fonts are absent.
+------------------------------------------------------------------------------
+
+A copy of the Apache License 2.0 is available at:
+  https://www.apache.org/licenses/LICENSE-2.0
