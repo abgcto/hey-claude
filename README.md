@@ -20,7 +20,7 @@ Because I got really, really tired of typing `claude` a hundred times a day ♡
 
 <br>
 
-<a href="https://github.com/lilmelon77/hey-claude/releases/latest"><img src="assets/download-button.png" alt="Download for macOS" width="240"></a>
+<a href="https://github.com/lilmelon77/hey-claude/releases/latest"><img src="assets/download-button.svg" alt="Download for macOS" width="240"></a>
 
 <sub>Notarized `.dmg` · Apple Silicon · macOS 14.4+ · no build required</sub>
 

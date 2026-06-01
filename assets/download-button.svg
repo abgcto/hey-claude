@@ -1,0 +1,14 @@
+<svg width="280" height="60" viewBox="0 0 280 60" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Download for macOS">
+  <!-- on-brand pill button: black squircle (like the app icon), coral download
+       glyph (the mascot's level-meter accent), off-white label -->
+  <rect x="0.5" y="0.5" width="279" height="59" rx="16" fill="#0A0A0A" stroke="#2A2A2A" stroke-width="1"/>
+  <!-- download arrow, coral -->
+  <g transform="translate(40, 30)" stroke="#D87757" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="0" y1="-9" x2="0" y2="6"/>
+    <polyline points="-6,0 0,6 6,0"/>
+    <line x1="-7" y1="11" x2="7" y2="11"/>
+  </g>
+  <!-- label -->
+  <text x="68" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="17" font-weight="600" fill="#EDEAE3" dominant-baseline="middle">Download for macOS</text>
+</svg>
