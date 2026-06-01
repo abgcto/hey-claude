@@ -118,7 +118,7 @@ This project's source is **GPL-3.0** (see [`LICENSE`](LICENSE)) — distribute a
 
 <div align="center">
 
-<img src="assets/mascots.png" width="600" alt="The notch mascot in six expressions and colours">
+<img src="assets/mascots.gif" width="600" alt="The notch mascot in six expressions and colours">
 
 _The little guy has moods. Pick a face and a color in Settings._
 
