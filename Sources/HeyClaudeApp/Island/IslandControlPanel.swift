@@ -50,8 +50,9 @@ struct PanelHeightKey: PreferenceKey {
 /// so plain taps suffice.
 ///
 /// Off (mic denied): attention + Fix mic access · Settings · Quit.
-/// Normal: [failure block] · Mute · Open in… (inline targets + folder) · Recent ·
-/// Settings · Quit.
+/// Normal: [failure block] · Mute · Open in… (inline targets + folder) · Settings ·
+/// Quit. (Recent is recorded but hidden until the resume feature makes it
+/// clickable — see `showRecent`.)
 struct IslandControlPanel: View {
     let controls: IslandControls
     var ink: Color
@@ -61,6 +62,12 @@ struct IslandControlPanel: View {
     /// elsewhere is chosen, so the dropdown doesn't linger.
     var collapse: () -> Void = {}
     @State private var showTargets = false
+
+    /// Recent rows are display-only today — they cost panel height without paying
+    /// for it, so they stay hidden until the "resume a recent session" feature
+    /// lands and makes them clickable. `RecentActions` keeps recording underneath,
+    /// so flipping this back on restores the history with zero data loss.
+    private static let showRecent = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -114,7 +121,7 @@ struct IslandControlPanel: View {
             ForEach(controls.targets, id: \.self) { t in targetRow(t) }
         }
 
-        if !controls.recent.isEmpty {
+        if Self.showRecent, !controls.recent.isEmpty {
             divider()
             sectionLabel("Recent")
             ForEach(Array(controls.recent.enumerated()), id: \.offset) { _, r in
