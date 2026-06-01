@@ -10,8 +10,7 @@ struct GeneralSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
-            VStack(spacing: 0) {
-                SettingsHeader("General")
+            SettingsSection("General") {
                 SettingsRow("Launch at login",
                             "Automatically start Hey Claude when you log in to your Mac.",
                             showsDivider: false) {

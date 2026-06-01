@@ -30,7 +30,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         }
 
         let host = NSHostingView(rootView: PreferencesView(controller: controller))
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 580),
+        let win = NSWindow(contentRect: NSRect(origin: .zero, size: PreferencesTheme.windowSize),
                            styleMask: [.titled, .closable],
                            backing: .buffered, defer: false)
         win.title = "Hey Claude Settings"   // kept for the Window menu / Mission Control

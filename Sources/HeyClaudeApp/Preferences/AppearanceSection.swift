@@ -21,16 +21,13 @@ struct AppearanceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
-            VStack(spacing: 0) {
-                SettingsHeader("Mascot", "The character that lives in your notch.")
+            SettingsSection("Mascot", "The character that lives in your notch.") {
                 gallery.padding(.top, 14)
             }
-            VStack(spacing: 0) {
-                SettingsHeader("Color")
+            SettingsSection("Color") {
                 swatchRow.padding(.top, 14)
             }
-            VStack(spacing: 0) {
-                SettingsHeader("Motion")
+            SettingsSection("Motion") {
                 SettingsRow("Playful animations",
                             "Subtle idle motion so the mascot feels alive in the notch. Off automatically when macOS Reduce Motion is on.",
                             showsDivider: false) {

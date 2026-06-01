@@ -9,15 +9,17 @@ import HeyClaudeKit
 struct SystemSection: View {
     let controller: AppController
 
-    @State private var micGranted: Bool = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-    @State private var inputMonitoring: Bool = PushToTalkController.hasPermission
+    // Probed once per appear in refreshPermissions() (not in the @State defaults, to
+    // avoid a redundant double-probe on first render). `loaded` distinguishes the
+    // initial populate from a later grant so we don't restart the tap on every appear.
+    @State private var micGranted = false
+    @State private var inputMonitoring = false
+    @State private var loaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
-            VStack(spacing: 0) {
-                SettingsHeader("Permissions",
-                               "What macOS must allow Hey Claude to do. Granted in System Settings ▸ Privacy & Security.")
-
+            SettingsSection("Permissions",
+                            "What macOS must allow Hey Claude to do. Granted in System Settings ▸ Privacy & Security.") {
                 SettingsRow("Microphone",
                             "Required to hear the wake word and your spoken prompt. Audio never leaves your Mac.") {
                     HStack(spacing: 10) {
@@ -62,12 +64,15 @@ struct SystemSection: View {
     private func refreshPermissions() {
         micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         let nowIM = PushToTalkController.hasPermission
-        // Granting Input Monitoring doesn't install the event tap by itself. On the
-        // not-granted → granted transition, start the tap when push-to-talk is
-        // enabled, so PTT works immediately instead of only after a relaunch.
-        if nowIM && !inputMonitoring && controller.settings.pushToTalkEnabled {
+        // Granting Input Monitoring doesn't install the event tap by itself. When it
+        // flips to granted while this pane is already loaded (the user granted it in
+        // System Settings and returned), start the tap so PTT works immediately
+        // instead of only after a relaunch. Skip on the initial load — don't restart
+        // a tap that launch already set up.
+        if loaded && nowIM && !inputMonitoring && controller.settings.pushToTalkEnabled {
             controller.pushToTalk?.start()
         }
         inputMonitoring = nowIM
+        loaded = true
     }
 }

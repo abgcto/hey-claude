@@ -26,15 +26,8 @@ final class RetrainWindowController: NSObject, NSWindowDelegate {
     func show(matchingFrame: NSRect? = nil) {
         controller.suspendForOnboarding()   // free the mic tap for the recorder
 
-        if let window, let model {
-            if let matchingFrame { window.setFrame(matchingFrame, display: false) }
-            NSApp.setActivationPolicy(.regular)
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            model.startRetrain()
-            return
-        }
-
+        // Always built fresh: finishRetrain() nils window + model on every exit, so
+        // there's never a live instance to reuse.
         let model = OnboardingModel(controller: controller, mode: .retrainOnly)
         self.model = model
         model.onRetrainComplete = { [weak self] in self?.finishRetrain() }
@@ -46,7 +39,7 @@ final class RetrainWindowController: NSObject, NSWindowDelegate {
         // so no titlebar-height discrepancy and no content-driven resize. The
         // `setFrame` below then places it at Settings' exact origin. Falls back to
         // 820×580 when opened without a Settings frame.
-        let size = matchingFrame?.size ?? CGSize(width: 820, height: 580)
+        let size = matchingFrame?.size ?? PreferencesTheme.windowSize
         let host = NSHostingView(rootView: OnboardingView(model: model, windowSize: size))
         let win = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                            styleMask: [.titled, .closable, .fullSizeContentView],

@@ -39,8 +39,7 @@ struct VoiceSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
             // ---- Wake word -------------------------------------------------
-            VStack(spacing: 0) {
-                SettingsHeader("Wake word", "How Hey Claude listens for “Hey Claude.”")
+            SettingsSection("Wake word", "How Hey Claude listens for “Hey Claude.”") {
                 SettingsRow("Wake sensitivity",
                             "Higher catches your voice more easily, but may misfire.") {
                     sensitivitySlider
@@ -53,8 +52,7 @@ struct VoiceSection: View {
             }
 
             // ---- Push to talk ---------------------------------------------
-            VStack(spacing: 0) {
-                SettingsHeader("Push to talk", "Hold a key, speak, release — pauses never cut you off.")
+            SettingsSection("Push to talk", "Hold a key, speak, release — pauses never cut you off.") {
                 SettingsRow("Hold a key to talk",
                             "An alternative to the wake word, always available.") {
                     DashboardToggle(isOn: $ptEnabled)
@@ -62,10 +60,16 @@ struct VoiceSection: View {
                 // Combine title + the unlabeled switch into one VoiceOver element,
                 // matching the General/Appearance toggle rows.
                 .accessibilityElement(children: .combine)
+
                 SettingsRow("Trigger key", "The key you hold down to start talking.",
                             showsDivider: false) {
                     keyMenu
                 }
+                // Dim the whole row (title + description + menu) when push-to-talk is
+                // off — not just the menu.
+                .opacity(ptEnabled ? 1 : 0.4)
+                .disabled(!ptEnabled)
+
                 // Pointer to the System tab — shown only when it's actionable:
                 // push-to-talk is on but Input Monitoring isn't granted yet. Hidden
                 // once granted or when push-to-talk is off, so it never reads as a
@@ -147,7 +151,6 @@ struct VoiceSection: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .disabled(!ptEnabled)
-        .opacity(ptEnabled ? 1 : 0.4)
+        // disabled/dimming is applied to the whole "Trigger key" row by the caller.
     }
 }

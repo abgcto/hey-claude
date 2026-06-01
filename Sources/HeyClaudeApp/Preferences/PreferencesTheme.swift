@@ -24,6 +24,11 @@ enum PreferencesTheme {
     static let listSpacing: CGFloat = 8
     static let sectionGap: CGFloat = 38
 
+    /// The Settings window's fixed content size — the single source of truth shared
+    /// by PreferencesView, PreferencesWindowController, and the retrain window's
+    /// fallback, so the "retrain matches Settings" contract can't silently drift.
+    static let windowSize = CGSize(width: 820, height: 580)
+
     /// Type roles (pair with the colour rule):
     ///   • body    → primary text: list items, names, the toggle/button label (`ink`)
     ///   • caption → secondary text: explanatory lines, slider bounds (`inkSoft`)
@@ -44,9 +49,9 @@ enum PreferencesTheme {
     }
 }
 
-/// A redesigned section header: a real 17pt title with an optional one-line gray
-/// subtitle beneath. Replaces the tiny tracked `SectionLabel` eyebrow as the
-/// primary grouping device — bigger, sentence-case, with clear air below.
+/// A redesigned section header: a 16pt title with an optional one-line gray
+/// subtitle beneath — the primary grouping device, bigger and sentence-case with
+/// clear air below.
 struct SettingsHeader: View {
     let title: String
     let subtitle: String?
@@ -79,30 +84,42 @@ struct SettingsRow<Control: View>: View {
     let title: String
     let description: String?
     let showsDivider: Bool
+    /// When true the description is forced to a single line with middle truncation
+    /// (used for the working-folder path); otherwise it wraps to fit.
+    let truncatesDescription: Bool
     @ViewBuilder var control: () -> Control
     init(_ title: String, _ description: String? = nil,
-         showsDivider: Bool = true, @ViewBuilder control: @escaping () -> Control) {
+         showsDivider: Bool = true, truncatesDescription: Bool = false,
+         @ViewBuilder control: @escaping () -> Control) {
         self.title = title
         self.description = description
         self.showsDivider = showsDivider
+        self.truncatesDescription = truncatesDescription
         self.control = control
     }
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .leading, spacing: 4) {
-                    // 15pt/regular (400) title over a 13pt/regular gray description.
-                    // The title stays lighter than the 17pt Semibold group header so
-                    // the header clearly leads; ink vs gray color separates title from
+                    // 14pt/regular title over a 12pt/regular gray description. The
+                    // title stays lighter than the 16pt Semibold group header so the
+                    // header clearly leads; ink vs gray color separates title from
                     // description.
                     Text(title)
                         .font(PreferencesTheme.gs(14)).tracking(-0.1)
                         .foregroundStyle(PreferencesTheme.ink)
                     if let description {
-                        Text(description)
-                            .font(PreferencesTheme.gs(12))
-                            .foregroundStyle(PreferencesTheme.inkSoft)
-                            .fixedSize(horizontal: false, vertical: true)
+                        if truncatesDescription {
+                            Text(description)
+                                .font(PreferencesTheme.gs(12))
+                                .foregroundStyle(PreferencesTheme.inkSoft)
+                                .lineLimit(1).truncationMode(.middle)
+                        } else {
+                            Text(description)
+                                .font(PreferencesTheme.gs(12))
+                                .foregroundStyle(PreferencesTheme.inkSoft)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 Spacer(minLength: 16)
@@ -115,6 +132,26 @@ struct SettingsRow<Control: View>: View {
             if showsDivider {
                 Rectangle().fill(PreferencesTheme.hairline).frame(height: 1)
             }
+        }
+    }
+}
+
+/// A header-led group: a `SettingsHeader` over its rows in a tight VStack — the
+/// standard section block used by every tab, replacing the repeated
+/// `VStack(spacing: 0) { SettingsHeader(…); rows }`.
+struct SettingsSection<Content: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder var content: () -> Content
+    init(_ title: String, _ subtitle: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content
+    }
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsHeader(title, subtitle)
+            content()
         }
     }
 }

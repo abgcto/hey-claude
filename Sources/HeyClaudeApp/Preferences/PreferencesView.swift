@@ -43,7 +43,7 @@ struct PreferencesView: View {
                 }
             }
         }
-        .frame(width: 820, height: 580)
+        .frame(width: PreferencesTheme.windowSize.width, height: PreferencesTheme.windowSize.height)
     }
 
     private var rail: some View {

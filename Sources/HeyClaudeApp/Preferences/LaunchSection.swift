@@ -9,6 +9,13 @@ import HeyClaudeKit
 struct LaunchSection: View {
     let controller: AppController
 
+    /// Detecting targets hits Launch Services + scans editor extension dirs, so
+    /// compute it ONCE on appear (and on re-activation, in case the user installed an
+    /// editor/extension while away) instead of on every SwiftUI rebuild — and once
+    /// for both lists rather than re-scanning per rebuild.
+    @State private var targets: [LaunchTarget] = []
+    @State private var unavailable: [EditorKind] = []
+
     private var current: LaunchTarget { controller.settings.preferredTarget }
     private var folder: String {
         (controller.settings.projectDirectory as NSString).abbreviatingWithTildeInPath
@@ -16,25 +23,33 @@ struct LaunchSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PreferencesTheme.sectionGap) {
-            VStack(spacing: 0) {
-                SettingsHeader("Open Claude Code in",
-                               "The terminal or editor a launch opens in. Editors missing the Claude Code extension are shown greyed.")
+            SettingsSection("Open Claude Code in",
+                            "The terminal or editor a launch opens in. Editors missing the Claude Code extension are shown greyed.") {
                 VStack(spacing: PreferencesTheme.listSpacing) {
-                    ForEach(controller.availableTargets, id: \.self) { targetRow($0) }
-                    ForEach(controller.unavailableEditors, id: \.self) { disabledRow($0) }
+                    ForEach(targets, id: \.self) { targetRow($0) }
+                    ForEach(unavailable, id: \.self) { disabledRow($0) }
                 }
                 .padding(.top, 14)
             }
 
-            VStack(spacing: 0) {
-                SettingsHeader("Working folder")
-                SettingsRow("Project folder", folder, showsDivider: false) {
+            SettingsSection("Working folder") {
+                SettingsRow("Project folder", folder, showsDivider: false,
+                            truncatesDescription: true) {
                     DashboardButton("Choose", style: .secondary) { chooseFolder() }
                 }
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear(perform: refreshTargets)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshTargets()
+        }
+    }
+
+    private func refreshTargets() {
+        targets = controller.availableTargets
+        unavailable = controller.unavailableEditors
     }
 
     private func targetRow(_ target: LaunchTarget) -> some View {
@@ -69,6 +84,7 @@ struct LaunchSection: View {
         HStack(spacing: 10) {
             Image(systemName: "circle")
                 .font(.system(size: 13)).foregroundStyle(PreferencesTheme.inkFaint)
+                .accessibilityHidden(true)   // decorative; the row reads as one element
             Text(LaunchTarget.editor(editor).label)
                 .font(PreferencesTheme.body).foregroundStyle(PreferencesTheme.ink)
             Spacer(minLength: 12)
@@ -79,6 +95,9 @@ struct LaunchSection: View {
         .overlay(
             RoundedRectangle(cornerRadius: 9).stroke(PreferencesTheme.hairStrong, lineWidth: 1))
         .opacity(0.5)
+        // One VoiceOver element ("VS Code, Needs the Claude Code extension") instead
+        // of three disconnected fragments.
+        .accessibilityElement(children: .combine)
     }
 
     /// Folder picker — same NSOpenPanel config as onboarding's `chooseFolder`.
