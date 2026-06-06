@@ -51,18 +51,29 @@ lipo -thin arm64 "$ORT" -output "$TMP/ort_arm64.a"
 (cd "$MERGE/sherpa" && ar -x "$TMP/sherpa_arm64.a")
 (cd "$MERGE/ort"    && ar -x "$TMP/ort_arm64.a")
 
+echo "==> Debug: which archive member defines _OrtGetApiBase"
+nm -A "$TMP/ort_arm64.a" 2>/dev/null | grep " T _OrtGetApiBase" || echo "    NOT FOUND in ort_arm64.a"
+
+echo "==> Debug: does extracted .o file contain T _OrtGetApiBase"
+for f in "$MERGE/ort/"*.o; do
+    [ -f "$f" ] || continue
+    nm "$f" 2>/dev/null | grep -q " T _OrtGetApiBase" && echo "    FOUND in $(basename "$f")" && break
+done
+echo "    (scan complete)"
+
 # Rename all ort objects to guarantee no name collision with sherpa objects.
 for f in "$MERGE/ort/"*.o; do
     [ -f "$f" ] || continue
     mv "$f" "$(dirname "$f")/ort_$(basename "$f")"
 done
 
-# Use -filelist to avoid shell argument-length limits when there are thousands
-# of .o files (glob expansion silently truncates, dropping defining objects).
 find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
 find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
 echo "    objects: sherpa=$(find "$MERGE/sherpa" -name '*.o' | wc -l | tr -d ' ') ort=$(find "$MERGE/ort" -name '*.o' | wc -l | tr -d ' ')"
 libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
+
+echo "==> Debug: nm on merged lib for _OrtGetApiBase"
+nm "$LIB" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    NOT FOUND in merged lib"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
