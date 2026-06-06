@@ -91,11 +91,8 @@ PYEOF
 find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
 find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
 echo "    filelist lines: $(wc -l < "$TMP/filelist.txt" | tr -d ' ')"
-
-# Confirm the defining object survived extraction.
-DEF_FILE=$(grep -l "." "$MERGE/ort/"*onnxruntime_c_api* 2>/dev/null | while read f; do
-    nm "$f" 2>/dev/null | grep -q " T _OrtGetApiBase" && echo "$f" && break; done || true)
-echo "    defining file: ${DEF_FILE:-NOT FOUND in extracted ort}"
+echo "    ort files matching onnxruntime_c_api: $(ls "$MERGE/ort/" | grep -c onnxruntime_c_api || echo 0)"
+echo "    sample ort files: $(ls "$MERGE/ort/" | head -5 | tr '\n' ' ')"
 
 libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
 echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
