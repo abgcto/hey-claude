@@ -35,8 +35,11 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
         switch self {
         case .terminalNotInstalled(let k):
             return "Couldn’t open \(k.rawValue) — it isn’t installed."
-        case .terminalAutomationFailed(let k, _):
-            return "Couldn’t control \(k.rawValue)."
+        case .terminalAutomationFailed(let k, let detail):
+            if k.needsAccessibility && detail.contains("assistive access") {
+                return "Couldn’t open \(k.rawValue) — Accessibility permission is required."
+            }
+            return "Couldn’t control \(k.rawValue). \(detail)"
         case .editorDeepLinkRejected(let e):
             return "No app opened the \(e.rawValue) link."
         case .editorIntegrationMissing(let e):
@@ -55,8 +58,10 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
         switch self {
         case .terminalNotInstalled:
             return "Choose a different terminal above."
-        case .terminalAutomationFailed:
-            return "Allow Automation, then try again."
+        case .terminalAutomationFailed(let k, _):
+            return k.needsAccessibility
+                ? "Allow Accessibility, then try again."
+                : "Allow Automation, then try again."
         case .editorDeepLinkRejected(let e):
             return "Needs \(e.rawValue) + the Claude Code extension."
         case .editorIntegrationMissing:
@@ -71,8 +76,9 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
     /// not clipping) a long instruction string. nil when there's no one-click pane.
     public var settingsURL: URL? {
         switch self {
-        case .terminalAutomationFailed:
-            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+        case .terminalAutomationFailed(let k, _):
+            let pane = k.needsAccessibility ? "Privacy_Accessibility" : "Privacy_Automation"
+            return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")
         default:
             return nil
         }
@@ -80,7 +86,14 @@ public enum LaunchFailure: Error, Equatable, Sendable, LocalizedError {
 
     /// Label for the `settingsURL` button.
     public var settingsActionLabel: String? {
-        settingsURL == nil ? nil : "Open Automation Settings\u{2026}"
+        switch self {
+        case .terminalAutomationFailed(let k, _):
+            return k.needsAccessibility
+                ? "Open Accessibility Settings\u{2026}"
+                : "Open Automation Settings\u{2026}"
+        default:
+            return settingsURL == nil ? nil : "Open Automation Settings\u{2026}"
+        }
     }
 
     /// The compact line the notch island shows during the failure beat.

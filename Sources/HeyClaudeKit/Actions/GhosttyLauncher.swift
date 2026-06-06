@@ -29,6 +29,7 @@ public struct GhosttyLauncher: TerminalLauncher {
         return """
         delay 0.5
         tell application "System Events"
+            keystroke "u" using {control down}
             keystroke "\(cmd)"
             key code 36
         end tell

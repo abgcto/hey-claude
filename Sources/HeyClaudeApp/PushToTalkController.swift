@@ -28,8 +28,27 @@ final class PushToTalkController {
     /// True once Input Monitoring is granted (the tap can actually receive keys).
     static var hasPermission: Bool { CGPreflightListenEventAccess() }
 
-    /// Trigger the system Input-Monitoring prompt (no-op if already granted).
-    static func requestPermission() { _ = CGRequestListenEventAccess() }
+    /// Trigger the system Input-Monitoring prompt and register the app in the
+    /// Input Monitoring list. On macOS 13+, CGRequestListenEventAccess() alone
+    /// no longer adds the app to System Settings — a CGEventTap attempt is
+    /// required to force the OS to register the entry (the attempt fails/returns
+    /// nil without the grant, but the attempt itself is what triggers TCC
+    /// registration). Both calls are needed: the Request call for the dialog,
+    /// the tapCreate attempt for the list entry.
+    static func requestPermission() {
+        _ = CGRequestListenEventAccess()
+        // Only attempt tapCreate when permission is NOT yet granted. The attempt
+        // fails/returns nil without the grant, but the OS uses it to register the
+        // app in the Input Monitoring list (needed on macOS 13+). When permission
+        // is already granted the tap is unnecessary and would be leaked.
+        if !CGPreflightListenEventAccess() {
+            let mask: CGEventMask = 1 << CGEventType.flagsChanged.rawValue
+            _ = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
+                                  options: .listenOnly, eventsOfInterest: mask,
+                                  callback: { _, _, event, _ in Unmanaged.passUnretained(event) },
+                                  userInfo: nil)
+        }
+    }
 
     /// Install the tap. Safe to call repeatedly; rebuilds on a key change.
     func start() {

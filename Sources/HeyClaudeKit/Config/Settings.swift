@@ -2,16 +2,27 @@ import Foundation
 
 /// Which terminal "launch CLI" targets.
 public enum TerminalKind: String, Codable, CaseIterable, Sendable {
-    case terminalApp = "Terminal"
-    case iterm2 = "iTerm2"
-    case ghostty = "Ghostty"
+    case terminalApp    = "Terminal"
+    case iterm2         = "iTerm2"
+    case ghostty        = "Ghostty"
+    case cursorTerminal = "Cursor Terminal"
 
     /// App bundle identifier — for availability checks and app-icon lookup.
     public var bundleID: String {
         switch self {
-        case .terminalApp: return "com.apple.Terminal"
-        case .iterm2:      return "com.googlecode.iterm2"
-        case .ghostty:     return "com.mitchellh.ghostty"
+        case .terminalApp:    return "com.apple.Terminal"
+        case .iterm2:         return "com.googlecode.iterm2"
+        case .ghostty:        return "com.mitchellh.ghostty"
+        case .cursorTerminal: return "com.todesktop.230313mzl4w4u92"
+        }
+    }
+
+    /// Whether launching requires Accessibility permission (System Events keystrokes)
+    /// rather than Automation permission (direct AppleEvents to the app).
+    public var needsAccessibility: Bool {
+        switch self {
+        case .ghostty, .cursorTerminal: return true
+        case .terminalApp, .iterm2:     return false
         }
     }
 }

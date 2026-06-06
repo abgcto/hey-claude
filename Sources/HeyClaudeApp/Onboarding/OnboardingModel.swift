@@ -26,6 +26,7 @@ final class OnboardingModel {
     private(set) var step: Step = .welcome
     private(set) var micGranted = false
     private(set) var micDenied = false       // permission previously denied/restricted
+    private(set) var accessibilityGranted = AccessibilityPermission.isGranted
     private(set) var capturedCount = 0          // good samples so far (0...3)
     let totalSamples = 3
     private(set) var isRecording = false
@@ -53,7 +54,19 @@ final class OnboardingModel {
     var unavailableEditors: [EditorKind] { controller.unavailableEditors }
 
     /// Choose a target in the setup step.
-    func selectTarget(_ t: LaunchTarget) { target = t }
+    func selectTarget(_ t: LaunchTarget) { target = t; revalidateAccessibility() }
+
+    /// True when the selected target needs Accessibility permission and it isn't granted yet.
+    var targetNeedsAccessibility: Bool {
+        guard case .terminal(let kind) = target else { return false }
+        return kind.needsAccessibility && !accessibilityGranted
+    }
+
+    /// Trigger the system Accessibility prompt from the inline setup notice.
+    func grantAccessibility() { AccessibilityPermission.request() }
+
+    /// Re-check after the user returns from System Settings.
+    func revalidateAccessibility() { accessibilityGranted = AccessibilityPermission.isGranted }
 
     /// The real macOS app icon for a target, cached. nil if the app isn't found.
     @ObservationIgnored private var iconCache: [String: NSImage] = [:]

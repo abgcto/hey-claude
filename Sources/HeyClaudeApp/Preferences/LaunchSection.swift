@@ -52,6 +52,21 @@ struct LaunchSection: View {
         unavailable = controller.unavailableEditors
     }
 
+    /// Returns the label to display for `target`, appending a disambiguator when
+    /// both Cursor editor and Cursor terminal are present in `targets`.
+    private func rowLabel(for target: LaunchTarget) -> String {
+        let hasBothCursorModes = targets.contains(.editor(.cursor))
+            && targets.contains(.terminal(.cursorTerminal))
+        if hasBothCursorModes {
+            switch target {
+            case .editor(.cursor):    return "Cursor \u{2014} Editor"
+            case .terminal(.cursorTerminal): return "Cursor \u{2014} Terminal"
+            default: break
+            }
+        }
+        return target.displayLabel
+    }
+
     private func targetRow(_ target: LaunchTarget) -> some View {
         let selected = target == current
         return Button { controller.setPreferredTarget(target) } label: {
@@ -59,7 +74,7 @@ struct LaunchSection: View {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 13))
                     .foregroundStyle(selected ? PreferencesTheme.ink : PreferencesTheme.inkFaint)
-                Text(target.label)
+                Text(rowLabel(for: target))
                     .font(selected ? PreferencesTheme.bodyMedium : PreferencesTheme.body)
                     .foregroundStyle(PreferencesTheme.ink)
                 Spacer(minLength: 0)

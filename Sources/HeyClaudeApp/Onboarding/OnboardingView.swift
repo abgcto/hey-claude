@@ -191,7 +191,12 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 28) {
                 // Icon-switcher selector for where Claude Code opens.
                 field("CLAUDE CODE OPENS IN") { targetPicker }
-                    .padding(.bottom, 18)   // extra air before the folder chooser
+                    .padding(.bottom, model.targetNeedsAccessibility ? 8 : 18)
+                if model.targetNeedsAccessibility {
+                    accessibilityNotice
+                        .padding(.bottom, 10)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 field("PROJECT FOLDER") {
                     HStack(spacing: 11) {
                         Text(model.projectDirectory).font(gs(14)).lineLimit(1).truncationMode(.head)
@@ -245,10 +250,28 @@ struct OnboardingView: View {
 
     // MARK: - Target picker (icon switcher: app-icon row, selected grows)
 
+    // When Cursor has both an editor mode and a terminal mode, only the editor
+    // appears in the icon row (same app, same icon). The mode toggle below lets
+    // the user choose between them without showing two identical icons.
+    private var displayTargets: [LaunchTarget] {
+        model.availableTargets.filter { t in
+            !(cursorHasBothModes && t == .terminal(.cursorTerminal))
+        }
+    }
+
+    private var cursorHasBothModes: Bool {
+        model.availableTargets.contains(.editor(.cursor)) &&
+        model.availableTargets.contains(.terminal(.cursorTerminal))
+    }
+
+    private var isCursorSelected: Bool {
+        model.target == .editor(.cursor) || model.target == .terminal(.cursorTerminal)
+    }
+
     private var targetPicker: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
-                ForEach(Array(model.availableTargets.enumerated()), id: \.offset) { _, t in
+                ForEach(Array(displayTargets.enumerated()), id: \.offset) { _, t in
                     iconButton(t)
                 }
                 ForEach(Array(model.unavailableEditors.enumerated()), id: \.offset) { _, e in
@@ -260,7 +283,7 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Text(inspected?.rawValue ?? model.target.label)
+                    Text(inspected?.rawValue ?? model.target.displayLabel)
                         .font(gs(18, .semibold)).tracking(-0.2)
                         .foregroundStyle(inspected == nil ? ink : inkSoft)
                     if inspected == nil, model.showsDetectedBadge {
@@ -272,15 +295,28 @@ struct OnboardingView: View {
                 Text(inspected == nil ? selectedSubtitle
                                       : "Needs the Claude Code extension to use it.")
                     .font(gs(12.5)).foregroundStyle(inspected == nil ? inkSoft : inkFaint)
+                if inspected == nil, cursorHasBothModes, isCursorSelected {
+                    cursorModeToggle.padding(.top, 4)
+                }
             }
+            .animation(.easeOut(duration: 0.15), value: isCursorSelected)
         }
     }
 
     /// One selectable app icon. The selected one sits in a soft rounded well and
     /// grows slightly (dock / Launchpad-style emphasis).
     private func iconButton(_ t: LaunchTarget) -> some View {
-        let selected = inspected == nil && model.target == t
-        return Button { model.selectTarget(t); inspected = nil } label: {
+        // The cursor editor icon represents both cursor modes in the row.
+        let isCursorRep = cursorHasBothModes && t == .editor(.cursor)
+        let selected = inspected == nil && (model.target == t || (isCursorRep && model.target == .terminal(.cursorTerminal)))
+        return Button {
+            // Don't silently switch mode when the cursor icon is tapped while
+            // already in terminal mode — the toggle below handles mode choice.
+            if !(isCursorRep && model.target == .terminal(.cursorTerminal)) {
+                model.selectTarget(t)
+            }
+            inspected = nil
+        } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 14).fill(selected ? ink.opacity(0.08) : .clear)
                 appIcon(t, size: selected ? 50 : 42)
@@ -288,7 +324,28 @@ struct OnboardingView: View {
             .frame(width: 66, height: 66)
         }
         .buttonStyle(.plain)
-        .help(t.label)
+        .help(t.displayLabel)
+    }
+
+    private var cursorModeToggle: some View {
+        HStack(spacing: 6) {
+            cursorModeButton("Editor", target: .editor(.cursor))
+            cursorModeButton("Terminal", target: .terminal(.cursorTerminal))
+        }
+    }
+
+    private func cursorModeButton(_ title: String, target: LaunchTarget) -> some View {
+        let active = model.target == target
+        return Button(title) { model.selectTarget(target) }
+            .buttonStyle(.plain)
+            .font(gs(12, active ? .medium : .regular))
+            .foregroundStyle(active ? .black : inkSoft)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(active ? ink : Color.clear)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? ink : hairStrong, lineWidth: 1))
+            )
     }
 
     /// An installed editor that can't be used yet. The real icon with a warning
@@ -335,8 +392,41 @@ struct OnboardingView: View {
 
     private var selectedSubtitle: String {
         switch model.target {
-        case .terminal: return "Opens a fresh session in your project folder."
-        case .editor:   return "Edits land right inside the editor."
+        case .terminal(.cursorTerminal): return "Opens a new terminal panel inside Cursor."
+        case .terminal:                  return "Opens a fresh session in your project folder."
+        case .editor:                    return "Edits land right inside the editor."
+        }
+    }
+
+    private var accessibilityNotice: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(inkSoft)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Accessibility permission required")
+                    .font(gs(12.5, .medium)).foregroundStyle(ink)
+                Text("Needed to send your voice prompt to the terminal.")
+                    .font(gs(12)).foregroundStyle(inkSoft)
+            }
+            Spacer(minLength: 8)
+            Button("Grant Access") {
+                model.grantAccessibility()
+            }
+            .buttonStyle(.plain)
+            .font(gs(12, .medium))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 7).fill(ink))
+        }
+        .padding(13)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(hairStrong.opacity(0.45))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(hairStrong, lineWidth: 1))
+        )
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.revalidateAccessibility()
         }
     }
 }

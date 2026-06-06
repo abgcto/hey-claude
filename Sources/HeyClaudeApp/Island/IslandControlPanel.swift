@@ -110,7 +110,7 @@ struct IslandControlPanel: View {
             action: controls.toggleMute)
 
         row(icon: "arrow.up.forward.app", title: "Open in…",
-            trailing: controls.current.label,
+            trailing: controls.current.displayLabel,
             chevron: showTargets ? "chevron.up" : "chevron.down") {
             // Instant (no animation): the panel's height jumps in one layout pass so
             // the AppKit hit-region tracks the new rows exactly — an animated grow
@@ -209,7 +209,7 @@ struct IslandControlPanel: View {
         HStack(spacing: 9) {
             Image(systemName: t == controls.current ? "checkmark" : "")
                 .font(.system(size: 10, weight: .bold)).foregroundStyle(ink).frame(width: 15)
-            Text(t.label)
+            Text(t.displayLabel)
                 .font(.system(size: 11.5)).foregroundStyle(t == controls.current ? ink : dim)
             Spacer(minLength: 6)
         }

@@ -96,6 +96,14 @@ public enum LaunchTarget: Codable, Hashable, Sendable {
         }
     }
 
+    /// Display label for pickers. Collapses `.cursorTerminal` → "Cursor" so
+    /// the two Cursor surfaces appear as one entry when only the terminal
+    /// fallback is available (no Claude Code extension).
+    public var displayLabel: String {
+        if case .terminal(let k) = self, k == .cursorTerminal { return "Cursor" }
+        return label
+    }
+
     /// App bundle identifier of the target — for app-icon lookup.
     public var bundleID: String {
         switch self {

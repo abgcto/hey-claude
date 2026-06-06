@@ -25,9 +25,10 @@ let registry = CommandRegistry(commands: settings.commands,
 let executor = CommandExecutor(settings: settings,
                                launcherFor: { kind in
                                    switch kind {
-                                   case .terminalApp: return TerminalAppLauncher()
-                                   case .iterm2: return ITerm2Launcher()
-                                   case .ghostty: return GhosttyLauncher()
+                                   case .terminalApp:    return TerminalAppLauncher()
+                                   case .iterm2:         return ITerm2Launcher()
+                                   case .ghostty:        return GhosttyLauncher()
+                                   case .cursorTerminal: return CursorTerminalLauncher()
                                    }
                                })
 
