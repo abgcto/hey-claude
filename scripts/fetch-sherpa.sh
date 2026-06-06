@@ -35,28 +35,14 @@ LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
 echo "==> Merging onnxruntime into libsherpa-onnx.a…"
-# .a files are ar archives, not Mach-O — lipo -create/-extract on .a archives is
-# unreliable and corrupts output. Correct approach: ar-extract all .o files,
-# thin each fat object to arm64 (CI runner and app target are arm64-only),
-# prefix ort objects to avoid name collisions, repack with libtool.
-MERGE="$TMP/merge"
-mkdir -p "$MERGE/sherpa" "$MERGE/ort"
-(cd "$MERGE/sherpa" && ar -x "$LIB")
-(cd "$MERGE/ort"    && ar -x "$ORT")
-
-# Thin fat .o objects to arm64 in-place.
-for f in "$MERGE/sherpa/"*.o "$MERGE/ort/"*.o; do
-    [ -f "$f" ] || continue
-    lipo -thin arm64 "$f" -output "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" || true
-done
-
-# Prefix ort objects so they never collide with same-named sherpa objects.
-for f in "$MERGE/ort/"*.o; do
-    [ -f "$f" ] || continue
-    mv "$f" "$(dirname "$f")/ort_$(basename "$f")"
-done
-
-libtool -static -o "$LIB" "$MERGE/sherpa/"*.o "$MERGE/ort/"*.o
+# Both .a files are lipo-style fat archives (fat header, separate per-arch
+# archive slices inside) — ar -x cannot read them directly. Use lipo -thin to
+# extract the arm64 slice from each, then merge the two thin archives with
+# libtool -static. The CI runner (macos-14) and app distribution target are
+# both arm64-only, so replacing the fat lib with a thin arm64 archive is fine.
+lipo -thin arm64 "$LIB" -output "$TMP/sherpa_arm64.a"
+lipo -thin arm64 "$ORT" -output "$TMP/ort_arm64.a"
+libtool -static -o "$LIB" "$TMP/sherpa_arm64.a" "$TMP/ort_arm64.a"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
