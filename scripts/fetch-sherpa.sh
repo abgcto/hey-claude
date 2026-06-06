@@ -36,8 +36,16 @@ LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
 echo "==> Merging onnxruntime into libsherpa-onnx.a (universal2)…"
-libtool -static -o "$LIB.merged" "$LIB" "$ORT"
-mv "$LIB.merged" "$LIB"
+# libtool -static on two fat archives with duplicate .o names silently corrupts
+# the output. Split each fat lib into thin per-arch slices, merge each pair
+# separately, then reassemble into a fat library with lipo.
+lipo -extract arm64  "$LIB" -output "$TMP/sherpa_arm64.a"
+lipo -extract x86_64 "$LIB" -output "$TMP/sherpa_x86_64.a"
+lipo -extract arm64  "$ORT" -output "$TMP/ort_arm64.a"
+lipo -extract x86_64 "$ORT" -output "$TMP/ort_x86_64.a"
+libtool -static -o "$TMP/merged_arm64.a"  "$TMP/sherpa_arm64.a"  "$TMP/ort_arm64.a"
+libtool -static -o "$TMP/merged_x86_64.a" "$TMP/sherpa_x86_64.a" "$TMP/ort_x86_64.a"
+lipo -create "$TMP/merged_arm64.a" "$TMP/merged_x86_64.a" -output "$LIB"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
