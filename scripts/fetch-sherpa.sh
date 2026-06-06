@@ -57,7 +57,12 @@ for f in "$MERGE/ort/"*.o; do
     mv "$f" "$(dirname "$f")/ort_$(basename "$f")"
 done
 
-libtool -static -o "$LIB" "$MERGE/sherpa/"*.o "$MERGE/ort/"*.o
+# Use -filelist to avoid shell argument-length limits when there are thousands
+# of .o files (glob expansion silently truncates, dropping defining objects).
+find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
+find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
+echo "    objects: sherpa=$(find "$MERGE/sherpa" -name '*.o' | wc -l | tr -d ' ') ort=$(find "$MERGE/ort" -name '*.o' | wc -l | tr -d ' ')"
+libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
