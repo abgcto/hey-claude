@@ -34,28 +34,33 @@ mv "$TMP/sherpa-onnx-$VERSION-macos-xcframework-static/sherpa-onnx.xcframework" 
 LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
-echo "==> Debug: library formats"
-lipo -info "$LIB" 2>&1 || true
-lipo -info "$ORT" 2>&1 || true
-
 echo "==> Merging onnxruntime into libsherpa-onnx.a…"
+# Both archives are lipo-style fat files. Strategy:
+# 1. lipo -thin to extract arm64 thin archives (ar -x fails on fat archives).
+# 2. ar -x each thin archive into separate directories.
+# 3. Rename ort objects with an ort_ prefix — libtool -static silently drops a
+#    defining object when a same-named object from the other archive is seen first,
+#    which caused _OrtGetApiBase to vanish from the merged output.
+# 4. libtool -static to repack all objects into the final library.
+MERGE="$TMP/merge"
+mkdir -p "$MERGE/sherpa" "$MERGE/ort"
+
 lipo -thin arm64 "$LIB" -output "$TMP/sherpa_arm64.a"
-echo "    sherpa_arm64.a: $(wc -c < "$TMP/sherpa_arm64.a") bytes"
 lipo -thin arm64 "$ORT" -output "$TMP/ort_arm64.a"
-echo "    ort_arm64.a: $(wc -c < "$TMP/ort_arm64.a") bytes"
 
-echo "==> Debug: OrtGetApiBase in ort_arm64.a before merge"
-nm "$TMP/ort_arm64.a" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    NOT FOUND"
+(cd "$MERGE/sherpa" && ar -x "$TMP/sherpa_arm64.a")
+(cd "$MERGE/ort"    && ar -x "$TMP/ort_arm64.a")
 
-libtool -static -o "$LIB" "$TMP/sherpa_arm64.a" "$TMP/ort_arm64.a"
-echo "    merged lib: $(wc -c < "$LIB") bytes"
+# Rename all ort objects to guarantee no name collision with sherpa objects.
+for f in "$MERGE/ort/"*.o; do
+    [ -f "$f" ] || continue
+    mv "$f" "$(dirname "$f")/ort_$(basename "$f")"
+done
+
+libtool -static -o "$LIB" "$MERGE/sherpa/"*.o "$MERGE/ort/"*.o
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
-
-echo "==> Debug: nm output for _OrtGetApiBase in merged lib"
-nm "$LIB" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    (no matches at all)"
-echo "    total nm lines: $(nm "$LIB" 2>/dev/null | wc -l)"
 
 echo "==> Verifying _OrtGetApiBase is now defined…"
 if nm "$LIB" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
