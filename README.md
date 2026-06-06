@@ -18,7 +18,7 @@ Because I got really, really tired of typing `claude` a hundred times a day ♡
 
 <br>
 
-<a href="https://github.com/lilmelon77/hey-claude/releases/latest/download/HeyClaude.dmg"><img src="assets/download-button.svg" alt="Download for macOS" width="240"></a>
+<a href="https://github.com/abgcto/hey-claude/releases/latest/download/HeyClaude.dmg"><img src="assets/download-button.svg" alt="Download for macOS" width="240"></a>
 
 <sub>Notarized `.dmg` · Apple Silicon · macOS 14.4+ · no build required</sub>
 
@@ -76,7 +76,7 @@ This is the part I care about most. The wake word and speech-to-text run **local
 
 ## Install
 
-1. **[Download the latest `.dmg`](https://github.com/lilmelon77/hey-claude/releases/latest/download/HeyClaude.dmg)** ↑
+1. **[Download the latest `.dmg`](https://github.com/abgcto/hey-claude/releases/latest/download/HeyClaude.dmg)** ↑
 2. Open it and drag **Hey Claude** into **Applications**.
 3. Launch it and follow the short onboarding.
 
