@@ -58,6 +58,11 @@ final class AppController {
     /// panel (mirrors the menu's `Settings` item). nil before the window layer wired.
     var onOpenSettings: (() -> Void)?
 
+    /// Wired by AppDelegate to Sparkle's `checkForUpdates(_:)`. Triggered from
+    /// Settings ▸ General. nil before the window layer is wired.
+    var onCheckForUpdates: (() -> Void)?
+    func checkForUpdates() { onCheckForUpdates?() }
+
     private let machine = AppStateMachine()
     private let recentLog = RecentActions()
     private var audio: AudioCapture?
@@ -122,9 +127,10 @@ final class AppController {
     /// executor's `launcherFor` closure runs on the audio queue (never main).
     nonisolated static func launcher(for kind: TerminalKind) -> TerminalLauncher {
         switch kind {
-        case .terminalApp: return TerminalAppLauncher()
-        case .iterm2:      return ITerm2Launcher()
-        case .ghostty:     return GhosttyLauncher()
+        case .terminalApp:    return TerminalAppLauncher()
+        case .iterm2:         return ITerm2Launcher()
+        case .ghostty:        return GhosttyLauncher()
+        case .cursorTerminal: return CursorTerminalLauncher()
         }
     }
 
@@ -169,6 +175,7 @@ final class AppController {
         try? SettingsStore().save(s)
         settings = s
         executor?.swap(makeExecutor())
+        AccessibilityPermission.requestIfNeeded(for: target)
         // Refresh the live island so the hover panel reflects the new target
         // immediately — `islandControls()` reads `settings.preferredTarget`, and
         // without this it stays stale until the next state-change re-render (same
@@ -373,17 +380,21 @@ final class AppController {
                 cooldownSeconds: settings.cooldownSeconds,
                 registry: registry,
                 execute: { [weak self] cmd, prompt in
-                    // VoiceSession runs `execute` on the audio queue; perform the
-                    // launch there, then report the typed outcome to the UI on main.
-                    // `completion` fires inline for terminal/editor.
-                    executor.execute(cmd, prompt: prompt) { result in
-                        if case .failure(let failure) = result {
-                            Log.launch.error("launch failed: \(failure.localizedDescription, privacy: .public)")
-                        }
-                        // `prompt` is the user's words post wake-strip — the text
-                        // the island hands back during the reveal beat.
-                        Task { @MainActor in
-                            self?.didFinish(cmd, transcript: prompt, result: result)
+                    // VoiceSession calls `execute` on the audio queue. Dispatching
+                    // the launch to a global queue lets the audio queue return
+                    // immediately, preventing AppleScriptRunner's DispatchQueue.main.sync
+                    // (inside the terminal launcher) from parking the audio thread and
+                    // freezing wake-word detection for 1-2 seconds per launch.
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        executor.execute(cmd, prompt: prompt) { result in
+                            if case .failure(let failure) = result {
+                                Log.launch.error("launch failed: \(failure.localizedDescription, privacy: .public)")
+                            }
+                            // `prompt` is the user's words post wake-strip — the text
+                            // the island hands back during the reveal beat.
+                            Task { @MainActor in
+                                self?.didFinish(cmd, transcript: prompt, result: result)
+                            }
                         }
                     }
                 },
@@ -497,6 +508,7 @@ final class AppController {
         s.onboardingCompleted = true
         try? SettingsStore().save(s)
         settings = s
+        AccessibilityPermission.requestIfNeeded(for: target)
         restartPipeline()
     }
 

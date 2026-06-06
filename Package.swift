@@ -15,6 +15,9 @@ let package = Package(
         // SwiftUI menu-bar app (Phase 3A): the user-facing shell over HeyClaudeKit.
         .executable(name: "HeyClaudeApp", targets: ["HeyClaudeApp"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
+    ],
     targets: [
         // Prebuilt sherpa-onnx static xcframework (universal2 macOS).
         // Fetched + module map injected by `scripts/fetch-sherpa.sh` (gitignored);
@@ -47,7 +50,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "HeyClaudeApp",
-            dependencies: ["HeyClaudeKit"],
+            dependencies: [
+                "HeyClaudeKit",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/HeyClaudeApp"
         ),
         .testTarget(

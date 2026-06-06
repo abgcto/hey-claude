@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Observation
 import HeyClaudeKit
+import Sparkle
 
 /// Hey Claude — pure AppKit entry point: a plain `NSApplication` in `.accessory`
 /// mode with an `NSStatusItem` — NOT a SwiftUI `MenuBarExtra` and NOT a SwiftUI
@@ -38,8 +39,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferences: PreferencesWindowController?
     private var retrain: RetrainWindowController?
     private var pushToTalk: PushToTalkController?
+    // Strong ref required — NSApplication.delegate is weak, so this would otherwise
+    // be released immediately after applicationDidFinishLaunching returns.
+    private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Sparkle auto-updater. Only starts when a real EdDSA public key is present —
+        // the placeholder in Info.plist causes Sparkle to hard-error at startup, so
+        // we guard here to keep dev builds clean until keys are generated (see README
+        // or scripts/Info.plist for key-generation instructions).
+        let pubKey = Bundle.main.infoDictionary?["SUPublicEDKey"] as? String ?? ""
+        if !pubKey.isEmpty && !pubKey.hasPrefix("REPLACE_") {
+            let uc = SPUStandardUpdaterController(
+                startingUpdater: true,
+                updaterDelegate: nil,
+                userDriverDelegate: nil
+            )
+            updaterController = uc
+            controller.onCheckForUpdates = { [weak uc] in uc?.checkForUpdates(nil) }
+        }
         // Onboarding owns its own window; the controller triggers it on first run.
         let ob = OnboardingWindowController(controller: controller)
         onboarding = ob

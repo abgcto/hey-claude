@@ -22,13 +22,19 @@ struct GeneralSection: View {
             }
 
             // About — a quiet footer set off by a hairline.
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Hey Claude")
-                    .font(PreferencesTheme.bodyMedium)
-                    .foregroundStyle(PreferencesTheme.ink)
-                Text("Version \(controller.appVersion)")
-                    .font(PreferencesTheme.caption)
-                    .foregroundStyle(PreferencesTheme.inkSoft)
+            HStack(alignment: .bottom, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Hey Claude")
+                        .font(PreferencesTheme.bodyMedium)
+                        .foregroundStyle(PreferencesTheme.ink)
+                    Text("Version \(controller.appVersion)")
+                        .font(PreferencesTheme.caption)
+                        .foregroundStyle(PreferencesTheme.inkSoft)
+                }
+                Spacer(minLength: 16)
+                DashboardButton("Check for Updates\u{2026}", style: .secondary) {
+                    controller.checkForUpdates()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 22)

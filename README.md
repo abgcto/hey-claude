@@ -6,7 +6,7 @@
 
 Because I got really, really tired of typing `claude` a hundred times a day ♡
 
-![Version](https://img.shields.io/badge/version-v0.1.0-9cf)
+![Version](https://img.shields.io/badge/version-v0.2.0-9cf)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014.4%2B-black)
 ![Apple Silicon](https://img.shields.io/badge/arch-Apple%20Silicon-black)
 ![Swift](https://img.shields.io/badge/Swift-6-orange)
@@ -42,9 +42,10 @@ Say **"Hey Claude"** and it opens (or focuses) a Claude Code session, completely
 - 🎚️ **Hold-to-talk** — Prefer a key? Hold one (default: Right ⌥), speak, release. **Esc** cancels. Fully reconfigurable.
 - 🔒 **Private by default** — Wake word _and_ speech-to-text run entirely on your machine.
 - 🪄 **Lives in your notch** — An interactive island that shows the voice state (idle · listening · thinking) and doubles as the control center: mute, switch where it opens, peek at recent launches.
-- 🧩 **Opens where you work** — VS Code, Cursor, Antigravity, or your terminal (Terminal.app / iTerm2 / Ghostty).
+- 🧩 **Opens where you work** — VS Code, Cursor, Antigravity, or your terminal (Terminal.app / iTerm2 / Ghostty / Cursor Terminal).
 - 🗣️ **Learns your voice** — Onboarding tunes the wake word to your own voice & accent.
 - 🎨 **Make it yours** — Pick the notch mascot, its color, and idle animations in Settings.
+- 🔄 **Auto-updates** — The app checks for updates automatically and notifies you; or trigger a check from Settings → General.
 
 ---
 
@@ -81,7 +82,7 @@ This is the part I care about most. The wake word and speech-to-text run **local
 
 It's **notarized**, so it opens normally. **Requires** an Apple Silicon Mac on macOS 14.4+ and the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) on your `PATH`.
 
-On first run macOS will ask for **Microphone** (required), **Input Monitoring** (only for push-to-talk), and **Automation** (the first time it opens your terminal/editor). Review them anytime in **System Settings → Privacy & Security**.
+On first run macOS will ask for **Microphone** (required), **Input Monitoring** (only for push-to-talk), **Automation** (the first time it opens your terminal/editor), and **Accessibility** (only when using Cursor Terminal or Ghostty, which rely on UI automation). Review them anytime in **System Settings → Privacy & Security**.
 
 To uninstall: drag **Hey Claude.app** to the Trash, then optionally `rm -rf ~/Library/Application\ Support/HeyClaude`.
 

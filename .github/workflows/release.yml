@@ -1,19 +1,24 @@
 name: Release
 
-# Cut a release by bumping the version in scripts/Info.plist, then pushing a tag:
-#   git tag v0.1.1 && git push origin v0.1.1
-# This builds, signs, notarizes, staples, and publishes a GitHub Release with
-# HeyClaude.dmg attached. The "Download" button (releases/latest/download/…) then
-# serves the new DMG automatically.
+# Cut a release by bumping CFBundleShortVersionString + CFBundleVersion in
+# scripts/Info.plist, then pushing a tag:
+#   git tag v0.2.0 && git push origin v0.2.0
+# This builds, signs, notarizes, staples, publishes a GitHub Release with
+# HeyClaude.dmg, and updates appcast.xml on main so Sparkle can deliver the
+# update to existing users automatically.
 #
 # One-time setup — add these repo Secrets (Settings → Secrets and variables → Actions):
-#   MACOS_CERT_P12       base64 of your "Developer ID Application" certificate (.p12)
-#   MACOS_CERT_PASSWORD  the .p12 export password
-#   KEYCHAIN_PASSWORD    any string (used for the temporary CI keychain)
-#   HEYCLAUDE_SIGN_ID    e.g. "Developer ID Application: Your Name (TEAMID)"
-#   NOTARY_APPLE_ID      your Apple ID email
-#   NOTARY_TEAM_ID       your 10-char Team ID
-#   NOTARY_PASSWORD      an app-specific password (appleid.apple.com)
+#   MACOS_CERT_P12         base64 of your "Developer ID Application" certificate (.p12)
+#   MACOS_CERT_PASSWORD    the .p12 export password
+#   KEYCHAIN_PASSWORD      any string (used for the temporary CI keychain)
+#   HEYCLAUDE_SIGN_ID      e.g. "Developer ID Application: Your Name (TEAMID)"
+#   NOTARY_APPLE_ID        your Apple ID email
+#   NOTARY_TEAM_ID         your 10-char Team ID
+#   NOTARY_PASSWORD        an app-specific password (appleid.apple.com)
+#   SPARKLE_ED_PRIVATE_KEY base64 EdDSA private key from `generate_keys` (one-time)
+#
+# SPARKLE_TOOLS_VERSION below must match (or be ≤) the Sparkle version SPM resolves.
+# Check Package.resolved after `swift package resolve` and bump both together.
 #
 # NOTE: fonts aren't in the repo, so CI-built DMGs fall back to the system font.
 # Build locally with scripts/release.sh if you want the branded General Sans.
@@ -23,13 +28,18 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write          # create the Release + upload the asset
+  contents: write          # create the Release + upload the asset + push appcast
+
+env:
+  SPARKLE_TOOLS_VERSION: "2.7.5"
 
 jobs:
   release:
     runs-on: macos-14      # Apple Silicon runner
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed to check out main for the appcast commit
 
       - name: Select a Swift 6 toolchain
         run: sudo xcode-select -s /Applications/Xcode_16.1.app   # adjust to a Swift-6 Xcode on the runner
@@ -38,6 +48,15 @@ jobs:
         run: |
           ./scripts/fetch-sherpa.sh
           ./scripts/fetch-models.sh
+
+      - name: Download Sparkle tools
+        run: |
+          curl -fsSL \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_TOOLS_VERSION}/Sparkle-${SPARKLE_TOOLS_VERSION}.tar.xz" \
+            -o sparkle-tools.tar.xz
+          mkdir -p sparkle-tools/bin
+          tar -xf sparkle-tools.tar.xz -C sparkle-tools --strip-components=0 bin/sign_update
+          chmod +x sparkle-tools/bin/sign_update
 
       - name: Import Developer ID certificate
         env:
@@ -53,7 +72,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm -f /tmp/cert.p12
 
-      - name: Build · sign · notarize · staple · package
+      - name: Build · embed Sparkle · sign · notarize · staple · package
         env:
           HEYCLAUDE_SIGN_ID: ${{ secrets.HEYCLAUDE_SIGN_ID }}
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
@@ -65,30 +84,86 @@ jobs:
           swift build --product HeyClaudeApp -c release
           BIN="$(swift build --product HeyClaudeApp -c release --show-bin-path)/HeyClaudeApp"
 
-          # Assemble the .app bundle (mirrors scripts/release.sh).
-          rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Fonts"
+          # Assemble the .app bundle.
+          rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Fonts" \
+                                   "$APP/Contents/Frameworks"
           cp "$BIN" "$APP/Contents/MacOS/HeyClaude"
           cp scripts/Info.plist "$APP/Contents/Info.plist"
           [ -f Resources/AppIcon.icns ] || ./scripts/make-appicon.sh
           cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-          cp Resources/Fonts/*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null || true   # absent on CI → system font
-          cp -R Models "$APP/Contents/Resources/Models"                                    # models must live INSIDE the bundle
+          cp Resources/Fonts/*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null || true
+          cp -R Models "$APP/Contents/Resources/Models"
 
-          # Hardened-runtime signature (required for notarization).
+          # Embed Sparkle.framework (SPM downloads the XCFramework into .build/artifacts).
+          SPARKLE_FW=$(find .build/artifacts -name "Sparkle.framework" -type d \
+              \( -path "*/macos-arm64_x86_64/*" -o -path "*/macos-arm64/*" \) | head -1)
+          if [ -z "$SPARKLE_FW" ]; then
+            echo "ERROR: Sparkle.framework not found in .build/artifacts" >&2; exit 1
+          fi
+          cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
+          install_name_tool -add_rpath "@executable_path/../Frameworks" \
+              "$APP/Contents/MacOS/HeyClaude"
+
+          # Inside-out hardened-runtime signing: nested helpers first, then app.
+          # Notarization rejects any bundle whose nested code isn't independently signed.
+          EMBEDDED_FW="$APP/Contents/Frameworks/Sparkle.framework"
+          for xpc in "$EMBEDDED_FW/Versions/B/XPCServices/"*.xpc; do
+            [ -d "$xpc" ] && codesign --force --options runtime --timestamp \
+              --entitlements scripts/entitlements.plist --sign "$HEYCLAUDE_SIGN_ID" "$xpc"
+          done
+          if [ -d "$EMBEDDED_FW/Versions/B/Autoupdate" ]; then
+            codesign --force --options runtime --timestamp \
+              --entitlements scripts/entitlements.plist \
+              --sign "$HEYCLAUDE_SIGN_ID" "$EMBEDDED_FW/Versions/B/Autoupdate"
+          fi
+          codesign --force --options runtime --timestamp \
+            --sign "$HEYCLAUDE_SIGN_ID" "$EMBEDDED_FW"
           codesign --force --options runtime --timestamp \
             --entitlements scripts/entitlements.plist \
             --sign "$HEYCLAUDE_SIGN_ID" "$APP"
           codesign --verify --strict --verbose=2 "$APP"
 
-          # Notarize the app, then staple, then seal into the DMG.
+          # Notarize, staple, then seal into a DMG.
           ditto -c -k --keepParent "$APP" notarize.zip
           xcrun notarytool submit notarize.zip \
-            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD" --wait
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" --wait
           xcrun stapler staple "$APP"
 
           stage="$(mktemp -d)"; cp -R "$APP" "$stage/"; ln -s /Applications "$stage/Applications"
           hdiutil create -volname "Hey Claude" -srcfolder "$stage" -ov -format UDZO HeyClaude.dmg
           xcrun stapler staple HeyClaude.dmg || true
+
+      - name: Sign DMG for Sparkle and update appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Parse version/build from Info.plist.
+          VERSION=$(defaults read "$(pwd)/scripts/Info.plist" CFBundleShortVersionString)
+          BUILD=$(defaults read "$(pwd)/scripts/Info.plist" CFBundleVersion)
+          PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
+
+          # Get EdDSA signature + byte length from sign_update.
+          SIGN_OUTPUT=$(./sparkle-tools/bin/sign_update HeyClaude.dmg "$SPARKLE_ED_PRIVATE_KEY")
+          SIG=$(echo "$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          LEN=$(echo "$SIGN_OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
+          if [ -z "$SIG" ] || [ -z "$LEN" ]; then
+            echo "ERROR: sign_update did not produce a signature. Output: $SIGN_OUTPUT" >&2; exit 1
+          fi
+          echo "Signed DMG: sig=${SIG:0:12}… length=$LEN"
+
+          # Switch to main and prepend the new item into appcast.xml.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          python3 scripts/update-appcast.py "$VERSION" "$BUILD" "$SIG" "$LEN" "$PUB_DATE"
+          git add appcast.xml
+          git commit -m "appcast: add v${VERSION}"
+          git push origin main
 
       - name: Publish the GitHub Release with the DMG
         uses: softprops/action-gh-release@v2
