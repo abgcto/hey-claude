@@ -53,6 +53,10 @@ echo "    merged lib: $(wc -c < "$LIB") bytes"
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
 
+echo "==> Debug: nm output for _OrtGetApiBase in merged lib"
+nm "$LIB" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    (no matches at all)"
+echo "    total nm lines: $(nm "$LIB" 2>/dev/null | wc -l)"
+
 echo "==> Verifying _OrtGetApiBase is now defined…"
 if nm "$LIB" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
     echo "    OK"
