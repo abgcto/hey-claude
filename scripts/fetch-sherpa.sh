@@ -92,11 +92,11 @@ find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
 find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
 echo "    filelist lines: $(wc -l < "$TMP/filelist.txt" | tr -d ' ')"
 CAPI=$(ls "$MERGE/ort/" | grep onnxruntime_c_api | head -1)
-echo "    capi file: $CAPI"
+echo "    capi file in filelist: $(grep onnxruntime_c_api "$TMP/filelist.txt" | head -1 || echo NOT FOUND)"
+echo "    sherpa T OrtGetApiBase: $(nm "$TMP/sherpa_arm64.a" 2>/dev/null | grep -c " T _OrtGetApiBase" || echo 0)"
 if [ -n "$CAPI" ]; then
-    lipo -info "$MERGE/ort/$CAPI" 2>&1 || true
-    echo "    nm plain:      $(nm "$MERGE/ort/$CAPI" 2>/dev/null | grep OrtGetApiBase | head -1 || echo NOT FOUND)"
-    echo "    nm -arch arm64: $(nm -arch arm64 "$MERGE/ort/$CAPI" 2>/dev/null | grep OrtGetApiBase | head -1 || echo NOT FOUND)"
+    libtool -static -o "$TMP/capi_only.a" "$MERGE/ort/$CAPI" 2>/dev/null
+    echo "    capi-only lib nm: $(nm "$TMP/capi_only.a" 2>/dev/null | grep OrtGetApiBase | head -1 || echo NOT FOUND)"
 fi
 
 libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
