@@ -90,7 +90,16 @@ PYEOF
 
 find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
 find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
+echo "    filelist lines: $(wc -l < "$TMP/filelist.txt" | tr -d ' ')"
+
+# Confirm the defining object survived extraction.
+DEF_FILE=$(grep -l "." "$MERGE/ort/"*onnxruntime_c_api* 2>/dev/null | while read f; do
+    nm "$f" 2>/dev/null | grep -q " T _OrtGetApiBase" && echo "$f" && break; done || true)
+echo "    defining file: ${DEF_FILE:-NOT FOUND in extracted ort}"
+
 libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
+echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
+nm "$LIB" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    _OrtGetApiBase: NOT IN MERGED LIB"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
