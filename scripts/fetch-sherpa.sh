@@ -34,15 +34,21 @@ mv "$TMP/sherpa-onnx-$VERSION-macos-xcframework-static/sherpa-onnx.xcframework" 
 LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
+echo "==> Debug: library formats"
+lipo -info "$LIB" 2>&1 || true
+lipo -info "$ORT" 2>&1 || true
+
 echo "==> Merging onnxruntime into libsherpa-onnx.a…"
-# Both .a files are lipo-style fat archives (fat header, separate per-arch
-# archive slices inside) — ar -x cannot read them directly. Use lipo -thin to
-# extract the arm64 slice from each, then merge the two thin archives with
-# libtool -static. The CI runner (macos-14) and app distribution target are
-# both arm64-only, so replacing the fat lib with a thin arm64 archive is fine.
 lipo -thin arm64 "$LIB" -output "$TMP/sherpa_arm64.a"
+echo "    sherpa_arm64.a: $(wc -c < "$TMP/sherpa_arm64.a") bytes"
 lipo -thin arm64 "$ORT" -output "$TMP/ort_arm64.a"
+echo "    ort_arm64.a: $(wc -c < "$TMP/ort_arm64.a") bytes"
+
+echo "==> Debug: OrtGetApiBase in ort_arm64.a before merge"
+nm "$TMP/ort_arm64.a" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    NOT FOUND"
+
 libtool -static -o "$LIB" "$TMP/sherpa_arm64.a" "$TMP/ort_arm64.a"
+echo "    merged lib: $(wc -c < "$LIB") bytes"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
