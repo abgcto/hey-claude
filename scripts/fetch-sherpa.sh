@@ -65,14 +65,22 @@ with open(ar_path, 'rb') as f:
         hdr = f.read(60)
         if len(hdr) < 60:
             break
-        raw_name = hdr[:16].decode('ascii', errors='replace').strip().rstrip('/')
+        raw_name = hdr[:16].decode('ascii', errors='replace').strip()
         size = int(hdr[48:58].decode('ascii').strip())
         data = f.read(size)
         if size % 2:
             f.read(1)  # even-alignment padding
-        if not raw_name or raw_name in skip:
+        # BSD extended-name format: #1/N means the real name occupies the first
+        # N bytes of the data section (used for names longer than 15 characters).
+        if raw_name.startswith('#1/'):
+            name_len = int(raw_name[3:])
+            name = data[:name_len].decode('ascii', errors='replace').rstrip('\x00')
+            data = data[name_len:]
+        else:
+            name = raw_name.rstrip('/')
+        if not name or name in skip:
             continue
-        base = os.path.basename(raw_name)
+        base = os.path.basename(name)
         idx = counts.get(base, 0)
         counts[base] = idx + 1
         with open(os.path.join(out_dir, f'{idx:04d}_{base}'), 'wb') as out:
