@@ -35,45 +35,54 @@ LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
 echo "==> Merging onnxruntime into libsherpa-onnx.a…"
-# Both archives are lipo-style fat files. Strategy:
-# 1. lipo -thin to extract arm64 thin archives (ar -x fails on fat archives).
-# 2. ar -x each thin archive into separate directories.
-# 3. Rename ort objects with an ort_ prefix — libtool -static silently drops a
-#    defining object when a same-named object from the other archive is seen first,
-#    which caused _OrtGetApiBase to vanish from the merged output.
-# 4. libtool -static to repack all objects into the final library.
+# Both archives are lipo-style fat files. lipo -thin extracts the arm64 slice.
+# ar -x cannot be used on the thin ort archive because it contains duplicate
+# member names (e.g. onnxruntime_c_api.cc.o appears multiple times); ar -x
+# overwrites by name, landing on the LAST occurrence which is a stub, not the
+# defining object. Instead, use Python to extract every member with a unique
+# counter prefix so no occurrence is silently dropped.
 MERGE="$TMP/merge"
 mkdir -p "$MERGE/sherpa" "$MERGE/ort"
 
 lipo -thin arm64 "$LIB" -output "$TMP/sherpa_arm64.a"
 lipo -thin arm64 "$ORT" -output "$TMP/ort_arm64.a"
 
+# Extract sherpa with plain ar (no duplicates there).
 (cd "$MERGE/sherpa" && ar -x "$TMP/sherpa_arm64.a")
-(cd "$MERGE/ort"    && ar -x "$TMP/ort_arm64.a")
 
-echo "==> Debug: which archive member defines _OrtGetApiBase"
-nm -A "$TMP/ort_arm64.a" 2>/dev/null | grep " T _OrtGetApiBase" || echo "    NOT FOUND in ort_arm64.a"
+# Extract ort with Python: give each member a unique counter prefix so
+# duplicate filenames all survive as separate .o files.
+python3 - "$TMP/ort_arm64.a" "$MERGE/ort" << 'PYEOF'
+import sys, os
 
-echo "==> Debug: does extracted .o file contain T _OrtGetApiBase"
-for f in "$MERGE/ort/"*.o; do
-    [ -f "$f" ] || continue
-    nm "$f" 2>/dev/null | grep -q " T _OrtGetApiBase" && echo "    FOUND in $(basename "$f")" && break
-done
-echo "    (scan complete)"
-
-# Rename all ort objects to guarantee no name collision with sherpa objects.
-for f in "$MERGE/ort/"*.o; do
-    [ -f "$f" ] || continue
-    mv "$f" "$(dirname "$f")/ort_$(basename "$f")"
-done
+ar_path, out_dir = sys.argv[1], sys.argv[2]
+skip = frozenset(['/', '//', '__.SYMDEF', '__.SYMDEF SORTED',
+                  '__.SYMDEF_64', '__.SYMDEF_64 SORTED'])
+with open(ar_path, 'rb') as f:
+    assert f.read(8) == b'!<arch>\n', "not an ar archive"
+    counts = {}
+    while True:
+        hdr = f.read(60)
+        if len(hdr) < 60:
+            break
+        raw_name = hdr[:16].decode('ascii', errors='replace').strip().rstrip('/')
+        size = int(hdr[48:58].decode('ascii').strip())
+        data = f.read(size)
+        if size % 2:
+            f.read(1)  # even-alignment padding
+        if not raw_name or raw_name in skip:
+            continue
+        base = os.path.basename(raw_name)
+        idx = counts.get(base, 0)
+        counts[base] = idx + 1
+        with open(os.path.join(out_dir, f'{idx:04d}_{base}'), 'wb') as out:
+            out.write(data)
+print(f"    extracted {sum(counts.values())} ort members ({len(counts)} unique names)")
+PYEOF
 
 find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
 find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
-echo "    objects: sherpa=$(find "$MERGE/sherpa" -name '*.o' | wc -l | tr -d ' ') ort=$(find "$MERGE/ort" -name '*.o' | wc -l | tr -d ' ')"
 libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
-
-echo "==> Debug: nm on merged lib for _OrtGetApiBase"
-nm "$LIB" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    NOT FOUND in merged lib"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
