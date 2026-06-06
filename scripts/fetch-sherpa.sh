@@ -36,14 +36,15 @@ LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
 echo "==> Merging onnxruntime into libsherpa-onnx.a (universal2)…"
-libtool -static -o "$LIB.merged" "$LIB" "$ORT" 2>/dev/null
+libtool -static -o "$LIB.merged" "$LIB" "$ORT"
 mv "$LIB.merged" "$LIB"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
 
 echo "==> Verifying _OrtGetApiBase is now defined…"
-if nm -arch arm64 "$LIB" 2>/dev/null | grep -qE "^[0-9a-f]+ T _OrtGetApiBase"; then
+# Accept T/t (text) and W/w (weak) with any address format (hex case varies by toolchain).
+if nm -arch arm64 "$LIB" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
   echo "    OK"
 else
   echo "    FAILED: onnxruntime symbols not present" >&2
