@@ -91,8 +91,13 @@ PYEOF
 find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
 find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
 echo "    filelist lines: $(wc -l < "$TMP/filelist.txt" | tr -d ' ')"
-echo "    ort files matching onnxruntime_c_api: $(ls "$MERGE/ort/" | grep -c onnxruntime_c_api || echo 0)"
-echo "    sample ort files: $(ls "$MERGE/ort/" | head -5 | tr '\n' ' ')"
+CAPI=$(ls "$MERGE/ort/" | grep onnxruntime_c_api | head -1)
+echo "    capi file: $CAPI"
+if [ -n "$CAPI" ]; then
+    lipo -info "$MERGE/ort/$CAPI" 2>&1 || true
+    echo "    nm plain:      $(nm "$MERGE/ort/$CAPI" 2>/dev/null | grep OrtGetApiBase | head -1 || echo NOT FOUND)"
+    echo "    nm -arch arm64: $(nm -arch arm64 "$MERGE/ort/$CAPI" 2>/dev/null | grep OrtGetApiBase | head -1 || echo NOT FOUND)"
+fi
 
 libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
 echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
