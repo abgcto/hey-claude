@@ -3,8 +3,7 @@
 # prebuilt-static integration path documented in internal design notes.
 #
 # The official macOS xcframework ships WITHOUT onnxruntime, so we merge the
-# universal2 static libonnxruntime.a into libsherpa-onnx.a (libtool, because
-# xcodebuild -create-xcframework needs full Xcode which is absent under CLT).
+# universal2 static libonnxruntime.a into libsherpa-onnx.a.
 set -euo pipefail
 
 VERSION="v1.13.2"
@@ -35,28 +34,39 @@ mv "$TMP/sherpa-onnx-$VERSION-macos-xcframework-static/sherpa-onnx.xcframework" 
 LIB="$XCF/macos-arm64_x86_64/libsherpa-onnx.a"
 ORT="$TMP/sherpa-onnx-$VERSION-osx-universal2-static/lib/libonnxruntime.a"
 
-echo "==> Merging onnxruntime into libsherpa-onnx.a (universal2)…"
-# libtool -static on two fat archives with duplicate .o names silently corrupts
-# the output. Split each fat lib into thin per-arch slices, merge each pair
-# separately, then reassemble into a fat library with lipo.
-lipo -extract arm64  "$LIB" -output "$TMP/sherpa_arm64.a"
-lipo -extract x86_64 "$LIB" -output "$TMP/sherpa_x86_64.a"
-lipo -extract arm64  "$ORT" -output "$TMP/ort_arm64.a"
-lipo -extract x86_64 "$ORT" -output "$TMP/ort_x86_64.a"
-libtool -static -o "$TMP/merged_arm64.a"  "$TMP/sherpa_arm64.a"  "$TMP/ort_arm64.a"
-libtool -static -o "$TMP/merged_x86_64.a" "$TMP/sherpa_x86_64.a" "$TMP/ort_x86_64.a"
-lipo -create "$TMP/merged_arm64.a" "$TMP/merged_x86_64.a" -output "$LIB"
+echo "==> Merging onnxruntime into libsherpa-onnx.a…"
+# .a files are ar archives, not Mach-O — lipo -create/-extract on .a archives is
+# unreliable and corrupts output. Correct approach: ar-extract all .o files,
+# thin each fat object to arm64 (CI runner and app target are arm64-only),
+# prefix ort objects to avoid name collisions, repack with libtool.
+MERGE="$TMP/merge"
+mkdir -p "$MERGE/sherpa" "$MERGE/ort"
+(cd "$MERGE/sherpa" && ar -x "$LIB")
+(cd "$MERGE/ort"    && ar -x "$ORT")
+
+# Thin fat .o objects to arm64 in-place.
+for f in "$MERGE/sherpa/"*.o "$MERGE/ort/"*.o; do
+    [ -f "$f" ] || continue
+    lipo -thin arm64 "$f" -output "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" || true
+done
+
+# Prefix ort objects so they never collide with same-named sherpa objects.
+for f in "$MERGE/ort/"*.o; do
+    [ -f "$f" ] || continue
+    mv "$f" "$(dirname "$f")/ort_$(basename "$f")"
+done
+
+libtool -static -o "$LIB" "$MERGE/sherpa/"*.o "$MERGE/ort/"*.o
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
 
 echo "==> Verifying _OrtGetApiBase is now defined…"
-# Accept T/t (text) and W/w (weak) with any address format (hex case varies by toolchain).
-if nm -arch arm64 "$LIB" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
-  echo "    OK"
+if nm "$LIB" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
+    echo "    OK"
 else
-  echo "    FAILED: onnxruntime symbols not present" >&2
-  exit 1
+    echo "    FAILED: onnxruntime symbols not present" >&2
+    exit 1
 fi
 
 echo "sherpa-onnx.xcframework ready at $XCF"
