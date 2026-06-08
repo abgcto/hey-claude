@@ -95,10 +95,21 @@ PYEOF
 # doesn't directly reference (the app linker pulls them in later).
 # The ort objects already have unique counter-prefixed names from the Python
 # step above, so ar -q has no duplicate-name problem.
+ORT_OBJS=( "$MERGE/ort"/*.o )
+echo "    ort .o count: ${#ORT_OBJS[@]}"
+CAPI_OBJ=$(ls "$MERGE/ort/" | grep onnxruntime_c_api | head -1)
+echo "    capi obj: $CAPI_OBJ"
+echo "    capi file type: $(file "$MERGE/ort/$CAPI_OBJ" | cut -d: -f2-)"
+echo "    capi nm direct: $(nm "$MERGE/ort/$CAPI_OBJ" 2>/dev/null | grep OrtGetApiBase | head -3 || echo NOT FOUND)"
+echo "    ort total size: $(du -sh "$MERGE/ort" | cut -f1)"
+
 cp "$TMP/sherpa_arm64.a" "$LIB"
 find "$MERGE/ort" -name '*.o' | xargs ar -q "$LIB"
 ranlib "$LIB"
 echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
+echo "    merged member count: $(ar -t "$LIB" | wc -l | tr -d ' ')"
+echo "    capi in merged: $(ar -t "$LIB" | grep onnxruntime_c_api | head -3 || echo NOT FOUND)"
+echo "    nm OrtGetApiBase in merged: $(nm "$LIB" 2>/dev/null | grep OrtGetApiBase | head -5 || echo NOT FOUND)"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
