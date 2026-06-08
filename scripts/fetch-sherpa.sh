@@ -95,38 +95,31 @@ PYEOF
 # doesn't directly reference (the app linker pulls them in later).
 # The ort objects already have unique counter-prefixed names from the Python
 # step above, so ar -q has no duplicate-name problem.
-ORT_OBJS=( "$MERGE/ort"/*.o )
-echo "    ort .o count: ${#ORT_OBJS[@]}"
-CAPI_OBJ=$(ls "$MERGE/ort/" | grep onnxruntime_c_api | head -1)
-echo "    capi obj: $CAPI_OBJ"
-echo "    capi file type: $(file "$MERGE/ort/$CAPI_OBJ" | cut -d: -f2-)"
-echo "    capi nm direct: $(nm "$MERGE/ort/$CAPI_OBJ" 2>/dev/null | grep OrtGetApiBase | head -3 || echo NOT FOUND)"
-echo "    ort total size: $(du -sh "$MERGE/ort" | cut -f1)"
-
 cp "$TMP/sherpa_arm64.a" "$LIB"
 find "$MERGE/ort" -name '*.o' | xargs ar -q "$LIB"
 ranlib "$LIB"
 echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
-echo "    merged member count: $(ar -t "$LIB" | wc -l | tr -d ' ')"
-echo "    capi in merged: $(ar -t "$LIB" | grep onnxruntime_c_api | head -5 || echo NOT FOUND)"
-# Extract the stored capi member and nm it directly — does the stored copy still define T?
-XDIR="$TMP/xcheck"; mkdir -p "$XDIR"
-(cd "$XDIR" && ar -x "$LIB" 0000_onnxruntime_c_api.cc.o 2>/dev/null)
-echo "    extracted capi size: $(wc -c < "$XDIR/0000_onnxruntime_c_api.cc.o" 2>/dev/null || echo missing)"
-echo "    extracted capi nm: $(nm "$XDIR/0000_onnxruntime_c_api.cc.o" 2>/dev/null | grep OrtGetApiBase | head -3 || echo NOT FOUND)"
-# Also try nm -arch arm64 on the merged lib in case nm defaults to wrong arch
-echo "    nm -arch arm64 merged: $(nm -arch arm64 "$LIB" 2>/dev/null | grep OrtGetApiBase | head -5 || echo NOT FOUND)"
-echo "    nm OrtGetApiBase in merged: $(nm "$LIB" 2>/dev/null | grep OrtGetApiBase | head -5 || echo NOT FOUND)"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
 
-echo "==> Verifying _OrtGetApiBase is now defined…"
-if nm "$LIB" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
-    echo "    OK"
-else
-    echo "    FAILED: onnxruntime symbols not present" >&2
-    exit 1
+# Verification: nm on a 1100+ member archive crashes/truncates on macOS before
+# reaching the ort members, so we can't use nm "$LIB" | grep T _OrtGetApiBase.
+# Instead: find which ort .o defines the symbol (nm on individual objects works
+# fine), then confirm that member landed in the merged archive.
+echo "==> Verifying _OrtGetApiBase is present in merged lib…"
+DEFMEMBER=""
+for obj in "$MERGE/ort"/*.o; do
+    if nm "$obj" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
+        DEFMEMBER=$(basename "$obj"); break
+    fi
+done
+if [ -z "$DEFMEMBER" ]; then
+    echo "    FAILED: no ort object defines _OrtGetApiBase" >&2; exit 1
 fi
+if ! ar -t "$LIB" | grep -qF "$DEFMEMBER"; then
+    echo "    FAILED: $DEFMEMBER not found in merged lib" >&2; exit 1
+fi
+echo "    OK — $DEFMEMBER defines _OrtGetApiBase and is in the merged lib"
 
 echo "sherpa-onnx.xcframework ready at $XCF"
