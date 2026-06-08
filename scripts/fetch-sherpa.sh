@@ -107,19 +107,23 @@ cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
 # reaching the ort members, so we can't use nm "$LIB" | grep T _OrtGetApiBase.
 # Instead: find which ort .o defines the symbol (nm on individual objects works
 # fine), then confirm that member landed in the merged archive.
+# Verification: nm on a 1100+ member archive crashes on macOS before reaching
+# ort members. nm on individual ort .o files in the temp dir is also unreliable
+# (reason unclear). The one approach that reliably works: extract the defining
+# member from the merged archive with ar -x, then nm the extracted copy.
 echo "==> Verifying _OrtGetApiBase is present in merged lib…"
-DEFMEMBER=""
-for obj in "$MERGE/ort"/*.o; do
-    if nm "$obj" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
-        DEFMEMBER=$(basename "$obj"); break
+XDIR="$TMP/xcheck"; mkdir -p "$XDIR"
+FOUND=0
+for capi_name in $(ar -t "$LIB" | grep onnxruntime_c_api); do
+    rm -f "$XDIR/$capi_name"
+    (cd "$XDIR" && ar -x "$LIB" "$capi_name" 2>/dev/null)
+    if nm "$XDIR/$capi_name" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
+        echo "    OK — $capi_name defines _OrtGetApiBase in merged lib"
+        FOUND=1; break
     fi
 done
-if [ -z "$DEFMEMBER" ]; then
-    echo "    FAILED: no ort object defines _OrtGetApiBase" >&2; exit 1
+if [ "$FOUND" -eq 0 ]; then
+    echo "    FAILED: _OrtGetApiBase not defined in any onnxruntime_c_api member" >&2; exit 1
 fi
-if ! ar -t "$LIB" | grep -qF "$DEFMEMBER"; then
-    echo "    FAILED: $DEFMEMBER not found in merged lib" >&2; exit 1
-fi
-echo "    OK — $DEFMEMBER defines _OrtGetApiBase and is in the merged lib"
 
 echo "sherpa-onnx.xcframework ready at $XCF"
