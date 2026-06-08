@@ -88,20 +88,17 @@ with open(ar_path, 'rb') as f:
 print(f"    extracted {sum(counts.values())} ort members ({len(counts)} unique names)")
 PYEOF
 
-find "$MERGE/sherpa" -name '*.o' >  "$TMP/filelist.txt"
-find "$MERGE/ort"    -name '*.o' >> "$TMP/filelist.txt"
-echo "    filelist lines: $(wc -l < "$TMP/filelist.txt" | tr -d ' ')"
-CAPI=$(ls "$MERGE/ort/" | grep onnxruntime_c_api | head -1)
-echo "    capi file in filelist: $(grep onnxruntime_c_api "$TMP/filelist.txt" | head -1 || echo NOT FOUND)"
-echo "    sherpa T OrtGetApiBase: $(nm "$TMP/sherpa_arm64.a" 2>/dev/null | grep -c " T _OrtGetApiBase" || echo 0)"
-if [ -n "$CAPI" ]; then
-    libtool -static -o "$TMP/capi_only.a" "$MERGE/ort/$CAPI" 2>/dev/null
-    echo "    capi-only lib nm: $(nm "$TMP/capi_only.a" 2>/dev/null | grep OrtGetApiBase | head -1 || echo NOT FOUND)"
-fi
-
-libtool -static -filelist "$TMP/filelist.txt" -o "$LIB"
+# Start from the sherpa arm64 archive, then blindly append all ort objects.
+# We use 'ar -q' (quick-append) rather than libtool -static because Apple's
+# libtool filters out objects that don't resolve any undefined reference in the
+# input set — it silently drops ort symbols like _OrtGetApiBase that sherpa
+# doesn't directly reference (the app linker pulls them in later).
+# The ort objects already have unique counter-prefixed names from the Python
+# step above, so ar -q has no duplicate-name problem.
+cp "$TMP/sherpa_arm64.a" "$LIB"
+find "$MERGE/ort" -name '*.o' | xargs ar -q "$LIB"
+ranlib "$LIB"
 echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
-nm "$LIB" 2>/dev/null | grep "_OrtGetApiBase" | head -5 || echo "    _OrtGetApiBase: NOT IN MERGED LIB"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
 cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
