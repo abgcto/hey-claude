@@ -112,9 +112,13 @@ cp "$DEST/module.modulemap" "$XCF/macos-arm64_x86_64/Headers/module.modulemap"
 # (reason unclear). The one approach that reliably works: extract the defining
 # member from the merged archive with ar -x, then nm the extracted copy.
 echo "==> Verifying _OrtGetApiBase is present in merged lib…"
+echo "    ar-t count: $(ar -t "$LIB" 2>/dev/null | wc -l | tr -d ' ')"
+echo "    ar-t head5: $(ar -t "$LIB" 2>/dev/null | head -5 | tr '\n' '|')"
+echo "    ar-t tail5: $(ar -t "$LIB" 2>/dev/null | tail -5 | tr '\n' '|')"
+echo "    ar-t onnxruntime_c_api: $(ar -t "$LIB" 2>/dev/null | grep onnxruntime_c_api | head -3 || echo NONE)"
 XDIR="$TMP/xcheck"; mkdir -p "$XDIR"
 FOUND=0
-for capi_name in $(ar -t "$LIB" | grep onnxruntime_c_api); do
+for capi_name in $(ar -t "$LIB" 2>/dev/null | grep onnxruntime_c_api || true); do
     rm -f "$XDIR/$capi_name"
     (cd "$XDIR" && ar -x "$LIB" "$capi_name" 2>/dev/null)
     if nm "$XDIR/$capi_name" 2>/dev/null | grep -qE " [TtWw] _OrtGetApiBase"; then
