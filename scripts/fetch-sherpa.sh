@@ -108,7 +108,14 @@ find "$MERGE/ort" -name '*.o' | xargs ar -q "$LIB"
 ranlib "$LIB"
 echo "    merged lib size: $(wc -c < "$LIB" | tr -d ' ') bytes"
 echo "    merged member count: $(ar -t "$LIB" | wc -l | tr -d ' ')"
-echo "    capi in merged: $(ar -t "$LIB" | grep onnxruntime_c_api | head -3 || echo NOT FOUND)"
+echo "    capi in merged: $(ar -t "$LIB" | grep onnxruntime_c_api | head -5 || echo NOT FOUND)"
+# Extract the stored capi member and nm it directly — does the stored copy still define T?
+XDIR="$TMP/xcheck"; mkdir -p "$XDIR"
+(cd "$XDIR" && ar -x "$LIB" 0000_onnxruntime_c_api.cc.o 2>/dev/null)
+echo "    extracted capi size: $(wc -c < "$XDIR/0000_onnxruntime_c_api.cc.o" 2>/dev/null || echo missing)"
+echo "    extracted capi nm: $(nm "$XDIR/0000_onnxruntime_c_api.cc.o" 2>/dev/null | grep OrtGetApiBase | head -3 || echo NOT FOUND)"
+# Also try nm -arch arm64 on the merged lib in case nm defaults to wrong arch
+echo "    nm -arch arm64 merged: $(nm -arch arm64 "$LIB" 2>/dev/null | grep OrtGetApiBase | head -5 || echo NOT FOUND)"
 echo "    nm OrtGetApiBase in merged: $(nm "$LIB" 2>/dev/null | grep OrtGetApiBase | head -5 || echo NOT FOUND)"
 
 echo "==> Injecting Clang module map into xcframework Headers…"
